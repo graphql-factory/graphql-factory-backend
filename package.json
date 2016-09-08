@@ -12,7 +12,7 @@
     "build:copybrc": "cp build/.build.babelrc src/.babelrc",
     "build:rmbrc": "rm -f src/.babelrc",
     "example": "node example/index.js --harmony",
-    "build": "npm run build:copybrc && rollup -c build/rollup.config.js && npm run build:rmbrc",
+    "build": "node build/index.js --harmony",
     "test": "npm run build && mocha test/index.js"
   },
   "author": "Branden Horiuchi <bhoriuchi@gmail.com>",
@@ -27,6 +27,7 @@
     "babel-plugin-transform-runtime": "^6.0.0",
     "babel-runtime": "^6.9.0",
     "babel-register": "^6.11.0",
+    "bluebird": "^3.4.6",
     "graphql": "^0.7.0",
     "graphql-factory": "^0.4.4",
     "knex": "^0.11.10",
