@@ -1,5 +1,6 @@
 import _ from 'lodash'
 import { plugin, setTypes, setSchemas } from '../common'
+import getQuery from './getQuery'
 
 export function RethinkDBBackend (namespace, r, graphql, config = {}, connection) {
   // instantiate a new backend if a new one was not created
@@ -36,6 +37,9 @@ export function RethinkDBBackend (namespace, r, graphql, config = {}, connection
   this.functions = {}
   this.externalTypes = {}
 
+  // getters
+  this.getQuery()
+
   // setters
   this.setTypes()
   this.setSchemas()
@@ -45,6 +49,7 @@ export function RethinkDBBackend (namespace, r, graphql, config = {}, connection
 RethinkDBBackend.prototype.plugin = plugin
 RethinkDBBackend.prototype.setTypes = setTypes
 RethinkDBBackend.prototype.setSchemas = setSchemas
+RethinkDBBackend.prototype.getQuery = getQuery
 
 // export the backend
 export default RethinkDBBackend
