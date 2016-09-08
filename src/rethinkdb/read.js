@@ -7,6 +7,8 @@ export default function read (type) {
   let collection = config.collection || config.table
 
   return function (source, args, context, info) {
+    console.log(this.globals)
+
     let { r, connection } = this.globals[namespace]
     let table = backend.r.table(collection)
     return table.run(connection)

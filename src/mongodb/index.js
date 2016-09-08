@@ -20,7 +20,7 @@ class GraphQLFactoryMongoDBBackend extends GraphQLFactoryBaseBackend {
     this.db = db
 
     // add values to the globals namespace
-    _.merge(this.globals, { [namespace]: { db } })
+    _.merge(this._definition.globals, { [namespace]: { db } })
   }
 }
 

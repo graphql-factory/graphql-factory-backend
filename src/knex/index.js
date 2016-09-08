@@ -20,7 +20,7 @@ class GraphQLFactoryKnexBackend extends GraphQLFactoryBaseBackend {
     this.knex = knex
 
     // add values to the globals namespace
-    _.merge(this.globals, { [namespace]: { knex } })
+    _.merge(this._definition.globals, { [namespace]: { knex } })
   }
 }
 
