@@ -1,4 +1,4 @@
-export function create (backend, type) {
+export function create () {
   return function () {
 
   }
