@@ -4,19 +4,26 @@ import rethinkdbdash from 'rethinkdbdash'
 import * as graphql from 'graphql'
 import factory from 'graphql-factory'
 
+
 let config = {
   options: {},
   types: {
     List: {
       fields: {
         id: { type: 'String', primary: true },
-        name: { type: 'String', unique: true, ex: { args: {} } }
+        name: { type: 'String'},
+        items: ['Item']
       },
       _backend: {
         collection: 'list',
         mutation: {
         },
         query: {
+          read: {
+            args: {
+              id: { type: 'String' }
+            }
+          }
         }
       }
     },
@@ -40,8 +47,19 @@ let config = {
 
 let backend = RethinkDBBackend('List', graphql, factory, rethinkdbdash(), config)
 // console.log(JSON.stringify(_.omit(backend.plugin, 'globals'), null, '  '))
+let lib = backend.lib
 
-console.log(backend.lib._definitions.functions)
+lib.List('{ readList {id, name} }')
+  .then((results) => {
+    console.log(JSON.stringify(results, null, '  '))
+    process.exit()
+  })
+  .catch((err) => {
+    throw err
+  })
 
 
-process.exit()
+// console.log(backend.lib._definitions.definition.types.ListQuery.fields.readList)
+
+
+// process.exit()

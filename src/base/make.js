@@ -1,16 +1,22 @@
 import _ from 'lodash'
 
-export function getArgs (type, definition, cfg) {
+export const PRIMITIVES = ['String', 'Int', 'Float', 'Boolean', 'ID']
+
+export function isPrimitive (type) {
+  if (_.isArray(type)) {
+    if (type.length !== 1) return false
+    type = type[0]
+  }
+  return _.includes(PRIMITIVES, type)
+}
+
+export function getArgs (type, definition, cfg, name) {
   let args = {}
 
   // examine each field
   _.forEach(definition.fields, (fieldDef, fieldName) => {
-    if (_.isString(fieldDef) || _.isArray(fieldDef)) {
-      args[fieldName] = { type: fieldDef }
-    } else if (_.has(fieldDef, 'type')) {
-      if (!_.isString(fieldDef) && !_.isArray(fieldDef)) return true
-
-    }
+    let type = _.has(fieldDef, 'type') ? fieldDef.type : fieldDef
+    if (isPrimitive(type)) args[fieldName] = { type }
   })
 
   return args
@@ -44,17 +50,23 @@ export function make () {
     if (query !== false && collection) {
       _.set(this._definition.schemas, `${schemaName}.query`, queryName)
       query = _.isObject(query) ? query : {}
+
       if (!query.read && query.read !== false) query.read = true
 
       // add each query method
       _.forEach(query, (q, qname) => {
-        if (qname === 'read' && q === true) {
-          _.set(this._definition.types, `${queryName}.fields.${qname}${tname}`, {
-            type: [tname],
-            args: getArgs('query', definition, q),
-            resolve: `${qname}${tname}`
-          })
-          _.set(this._definition, `functions.${qname}${tname}`, this[`_${qname}`](tname))
+        let queryFieldName = qname === 'read' ? `${qname}${tname}` : qname
+
+        _.set(this._definition.types, `${queryName}.fields.${queryFieldName}`, {
+          type: q.type || [tname],
+          args: q.args || getArgs('query', definition, q, qname),
+          resolve: `${queryFieldName}`
+        })
+
+        if (q === true || !_.has(q, 'resolve')) {
+          _.set(this._definition, `functions.${queryFieldName}`, this._read(tname))
+        } else if (_.isFunction(_.get(q, 'resolve'))) {
+          _.set(this._definition, `functions.${queryFieldName}`, q.resolve)
         }
       })
     }
@@ -69,13 +81,18 @@ export function make () {
 
       // add each mutation method
       _.forEach(mutation, (m, mname) => {
-        if (_.includes(['create', 'update', 'delete'], mname) && m === true) {
-          _.set(this._definition.types, `${mutationName}.fields.${mname}${tname}`, {
-            type: mname === 'delete' ? 'Boolean' : tname,
-            args: getArgs('mutation', definition, m),
-            resolve: `${mname}${tname}`
-          })
-          _.set(this._definition.functions, `${mname}${tname}`, this[`_${mname}`](tname))
+        let mutationFieldName = _.includes(['create', 'update', 'delete'], mname) ? `${mname}${tname}` : mname
+
+        _.set(this._definition.types, `${mutationName}.fields.${mutationFieldName}`, {
+          type: m.type || [tname],
+          args: m.args || getArgs('mutation', definition, m, mname),
+          resolve: `${mutationFieldName}`
+        })
+
+        if (m === true || !_.has(m, 'resolve')) {
+          _.set(this._definition, `functions.${mutationFieldName}`, this[`_${mname}`](tname))
+        } else if (_.isFunction(_.get(m, 'resolve'))) {
+          _.set(this._definition, `functions.${mutationFieldName}`, m.resolve)
         }
       })
     }

@@ -34,7 +34,7 @@ export default class GraphQLFactoryBaseBackend {
 
     // factory properties
     this._definition = {
-      globals: {},
+      globals: { [namespace]: { config } },
       types: {},
       schemas: {},
       fields: {},
