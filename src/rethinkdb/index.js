@@ -11,6 +11,7 @@ let crud = { create, read, update, delete: del }
 class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBackend {
   constructor (namespace, graphql, factory, r, config, connection) {
     super(namespace, graphql, factory, config, crud)
+    this.type = 'GraphQLFactoryRethinkDBBackend'
 
     // check for a top-level rethinkdb namespace
     if (!r) throw new Error('a rethinkdb or rethinkdbdash top-level namespace is required')
@@ -24,6 +25,7 @@ class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBackend {
   }
 }
 
+// helper function to instantiate a new backend
 export default function (namespace, graphql, factory, r, config, connection) {
   return new GraphQLFactoryRethinkDBBackend(namespace, graphql, factory, r, config, connection)
 }

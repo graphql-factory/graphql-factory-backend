@@ -1,19 +1,9 @@
 import _ from 'lodash'
 import make from './make'
 
-export const FACTORY_FIELDS = [
-  'globals',
-  'types',
-  'schemas',
-  'fields',
-  'functions',
-  'externalTypes'
-]
-
 // base class for factory backend, all backends should extend this class
 export default class GraphQLFactoryBaseBackend {
   constructor (namespace, graphql, factory, config = {}, crud = {}) {
-
     this.type = 'GraphQLFactoryBaseBackend'
 
     // check for namespace, graphql
