@@ -11,7 +11,7 @@ let config = {
     Person: {
       fields: {
         id: { type: 'String', primary: true },
-        name: 'String',
+        name: { type: 'String' },
         list: { type: 'List', has: 'id' }
       },
       _backend: {
@@ -35,7 +35,7 @@ let config = {
     Item: {
       fields: {
         id: { type: 'String', primary: true },
-        name: 'String',
+        name: { type: 'String', unique: true },
         list: { type: 'String', belongsTo: { List: { items: 'id' } } }
       },
       _backend: {
@@ -55,7 +55,10 @@ let backend = RethinkDBBackend('List', graphql, factory, rethinkdbdash(), config
 // console.log(JSON.stringify(_.omit(backend.plugin, 'globals'), null, '  '))
 let lib = backend.lib
 
-lib.List('{ readPerson { id, name, list { id, name, items { id, name } } } }')
+lib.List('mutation Mutation { deleteItem (id: "965a4c0c-2611-46a1-b57b-bd2cb3626458") }')
+// lib.List('mutation Mutation { updateItem (id: "965a4c0c-2611-46a1-b57b-bd2cb3626458", name: "item10") { id, name } }')
+// lib.List('mutation Mutation { createItem (name: "item10") { id, name } }')
+// lib.List('{ readPerson { id, name, list { id, name, items { id, name } } } }')
 // lib.List('{ readList {id, name, items { id, name } } }')
   .then((results) => {
     console.log(JSON.stringify(results, null, '  '))

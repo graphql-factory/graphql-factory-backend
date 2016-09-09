@@ -153,7 +153,7 @@ export function make () {
         let mutationFieldName = _.includes(['create', 'update', 'delete'], mname) ? `${mname}${tname}` : mname
 
         _.set(this._definition.types, `${mutationName}.fields.${mutationFieldName}`, {
-          type: m.type || [tname],
+          type: m.type || mname === 'delete' ? 'Boolean' : tname,
           args: m.args || getArgs.call(this, 'mutation', definition, m, mname),
           resolve: `${mutationFieldName}`
         })
@@ -167,6 +167,7 @@ export function make () {
     }
   })
 
+  // update the definitions with relations
   makeRelations.call(this)
 }
 

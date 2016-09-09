@@ -77,6 +77,20 @@ export default class GraphQLFactoryBaseBackend {
     return !primary.length ? null : primary.length === 1 ? primary[0] : primary
   }
 
+  // get keys marked with unique
+  getUnique (fields, args) {
+    return _.without(_.map(_.pickBy(fields, (v) => v.unique === true), (v, field) => {
+      let value = _.get(args, field)
+      if (value === undefined) return
+      return {
+        field,
+        type: _.isArray(v.type) ? _.get(v, 'type[0]', 'Undefined') : _.get(v, 'type', 'Undefined'),
+        value
+      }
+    }), undefined)
+
+  }
+
   // returns a lib object lazily, make it only once
   get lib () {
     if (!this._lib) this._lib = this.factory.make(this.plugin)

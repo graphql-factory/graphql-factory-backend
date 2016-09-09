@@ -22,12 +22,6 @@ export default function read (type) {
     let has = _.get(_backend, `computed.relations.has["${parentType.name}"]["${cpath}"]`, {})
     let many = true
 
-/*
-    console.log('============')
-    console.log(type, JSON.stringify(_backend.computed.relations, null, '  '))
-    console.log('============')
-*/
-
     // check for nested with belongsTo relationship
     if (nested && _.has(fields, belongsTo.primary) && _.has(source, belongsTo.foreign)) {
       many = belongsTo.many
