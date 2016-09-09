@@ -31,6 +31,7 @@ export default class GraphQLFactoryBaseBackend {
     this.namespace = namespace
     this.graphql = graphql
     this.factory = factory(this.graphql)
+    this.defaultStore = 'test'
 
     // factory properties
     this._definition = {

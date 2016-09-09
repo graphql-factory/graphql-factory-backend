@@ -5,27 +5,47 @@ export default function read (type) {
   let { namespace, _types, getPrimary } = this
   let definition = _.get(_types, type, {})
   let { _backend, fields } = definition
-  let collection = _backend.collection || _backend.table
+  let { collection, store } = _backend.computed
 
+  console.log(type, JSON.stringify(_backend.computed.relations, null, '  '))
+  console.log('============')
+
+  // resolve function
   return function (source, args, context, info) {
     let { r, connection } = backend
     let primary = getPrimary(fields)
-    let table = r.table(collection)
+    let table = r.db(store).table(collection)
     let filter = table
     let argKeys = _.keys(args)
     let priKeys = _.isArray(primary) ? primary : [primary]
+    let parentType = _.get(info, 'parentType')
+    let nested = _.get(info, 'path', []).length > 1
+    let cpath = _.last(info.path)
+    let belongsTo = _.get(_backend, `computed.relations.belongsTo["${parentType.name}"]["${cpath}"]`, {})
+    let many = true
+
+    console.log(belongsTo)
+
+    // check for nested with belongsTo relationship
+    if (nested && _.has(fields, belongsTo.primary) && _.has(source, belongsTo.foreign)) {
+      many = belongsTo.many
+      filter = filter.filter({ [belongsTo.primary]: source[belongsTo.foreign] })
+    }
 
     // check if the primary keys were supplied
     if (_.intersection(priKeys, argKeys).length === argKeys.length && argKeys.length > 0) {
       let priArgs = _.map(priKeys, (pk) => args[pk])
       priArgs = priArgs.length === 1 ? priArgs[0] : priArgs
-      filter = table.get(priArgs).do((result) => result.eq(null).branch([], [result]))
+      filter = filter.get(priArgs).do((result) => result.eq(null).branch([], [result]))
     } else if (argKeys.length) {
-      filter = table.filter(args)
+      filter = filter.filter(args)
     }
 
     // add standard query modifiers
     if (_.isNumber(args.limit)) filter = filter.limit(args.limit)
+
+    // if not a many relation, return only a single result or null
+    if (!many) filter = filter.do((objs) => r.expr(objs).count().eq(0).branch(r.expr(null), r.expr(objs).nth(0)))
 
     // run the query
     return filter.run(connection)

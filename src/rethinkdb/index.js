@@ -19,6 +19,7 @@ class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBackend {
     // store database objects
     this.r = r
     this.connection = connection
+    this.defaultStore = 'test'
 
     // add values to the globals namespace
     _.merge(this._definition.globals, { [namespace]: { r, connection } })

@@ -8,29 +8,35 @@ import factory from 'graphql-factory'
 let config = {
   options: {},
   types: {
+    Person: {
+      fields: {
+        id: { type: 'String', primary: true },
+        name: 'String',
+        list: { type: 'List', has: { List: { key: 'id' } } }
+      },
+      _backend: {
+        collection: 'person'
+      }
+    },
     List: {
       fields: {
         id: { type: 'String', primary: true },
         name: { type: 'String'},
-        items: ['Item']
+        items: { type: ['Item'] }
       },
       _backend: {
         collection: 'list',
         mutation: {
         },
         query: {
-          read: {
-            args: {
-              id: { type: 'String' }
-            }
-          }
         }
       }
     },
     Item: {
       fields: {
         id: { type: 'String', primary: true },
-        name: 'String'
+        name: 'String',
+        list: { type: 'String', belongsTo: { List: { items: 'id' } } }
       },
       _backend: {
         collection: 'item'
@@ -49,7 +55,7 @@ let backend = RethinkDBBackend('List', graphql, factory, rethinkdbdash(), config
 // console.log(JSON.stringify(_.omit(backend.plugin, 'globals'), null, '  '))
 let lib = backend.lib
 
-lib.List('{ readList (id: "728a5bec-a686-4537-9583-44d162eaa845") {id, name} }')
+lib.List('{ readList {id, name, items { id, name } } }')
   .then((results) => {
     console.log(JSON.stringify(results, null, '  '))
     process.exit()
