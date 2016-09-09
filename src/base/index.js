@@ -70,6 +70,12 @@ export default class GraphQLFactoryBaseBackend {
     return _.merge(_plugin, obj)
   }
 
+  // get the primary key or keys
+  getPrimary (fields) {
+    let primary = _(fields).pickBy((v) => v.primary === true).keys().value()
+    return !primary.length ? null : primary.length === 1 ? primary[0] : primary
+  }
+
   // returns a lib object lazily, make it only once
   get lib () {
     if (!this._lib) this._lib = this.factory.make(this.plugin)

@@ -13,6 +13,10 @@ export function isPrimitive (type) {
 export function getArgs (type, definition, cfg, name) {
   let args = {}
 
+  if (type === 'query') {
+    args.limit = { type: 'Int' }
+  }
+
   // examine each field
   _.forEach(definition.fields, (fieldDef, fieldName) => {
     let type = _.has(fieldDef, 'type') ? fieldDef.type : fieldDef

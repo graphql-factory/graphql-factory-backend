@@ -49,7 +49,7 @@ let backend = RethinkDBBackend('List', graphql, factory, rethinkdbdash(), config
 // console.log(JSON.stringify(_.omit(backend.plugin, 'globals'), null, '  '))
 let lib = backend.lib
 
-lib.List('{ readList {id, name} }')
+lib.List('{ readList (id: "728a5bec-a686-4537-9583-44d162eaa845") {id, name} }')
   .then((results) => {
     console.log(JSON.stringify(results, null, '  '))
     process.exit()
