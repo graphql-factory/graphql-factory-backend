@@ -1,15 +1,6 @@
 import _ from 'lodash'
 
-/*
-Relationship notes:
-
-hasOne - one2one - this table has a field that references a pk in other table
-hasMany - one2many - this table has list that references pks in other table
-belongsTo - one2one/many2one - pk on self, other table should reference this table
-belongsToMany - many2many - join table that has a pk from this table and another
-  - handled by belongsTo with multiple type:foreign pairs defined
- */
-
+// primitive graphql types
 export const PRIMITIVES = ['String', 'Int', 'Float', 'Boolean', 'ID']
 
 export function isPrimitive (type) {
@@ -34,7 +25,7 @@ export function makeFieldDef (fieldDef) {
 
 export function getArgs (opType, definition, cfg, name) {
   let args = {}
-  let { fields, _backend } = definition
+  let { fields } = definition
 
   if (opType === 'query') {
     args.limit = { type: 'Int' }
@@ -45,30 +36,6 @@ export function getArgs (opType, definition, cfg, name) {
     let type = getType(fieldDef)
     if (!type) return true
     fieldDef = fields[fieldName] = makeFieldDef(fieldDef)
-    let { belongsTo, has } = fieldDef
-
-    // add belongsTo relationship
-    if (belongsTo) {
-      _.forEach(belongsTo, (bCfg, bType) => {
-        _.forEach(bCfg, (bKey, bField) => {
-          let foreignFieldDef = _.get(this._types, `["${bType}"].fields["${bField}"]`)
-          _.set(_backend, `computed.relations.belongsTo["${bType}"]["${bField}"]`, {
-            primary: fieldName,
-            foreign: bKey,
-            many: _.isArray(getType(foreignFieldDef))
-          })
-        })
-      })
-    }
-    if (has) {
-      _.forEach(has, (hField, hType) => {
-        _.set(_backend, `computed.relations.has["${hType}"]`, {
-          primary: fieldName,
-          foreign: hField.key,
-          many: _.isArray(fieldDef.type)
-        })
-      })
-    }
 
     if (isPrimitive(type)) {
       args[fieldName] = { type }
@@ -76,18 +43,52 @@ export function getArgs (opType, definition, cfg, name) {
       fieldDef.resolve = fieldDef.resolve || `read${type}`
     }
   })
-
   return args
 }
 
-export function makeRelations (definition) {
+// updates definitions with relationship data
+export function makeRelations () {
+  _.forEach(this._types, (definition, name) => {
+    let { fields, _backend } = definition
 
+    // examine each field
+    _.forEach(fields, (fieldDef, fieldName) => {
+      let type = getType(fieldDef)
+      let typeName = _.isArray(type) ? type[0] : type
+      if (!type) return true
+      fieldDef = fields[fieldName] = makeFieldDef(fieldDef)
+      let { belongsTo, has } = fieldDef
+
+      // add belongsTo relationship to the current type
+      if (belongsTo) {
+        _.forEach(belongsTo, (bCfg, bType) => {
+          _.forEach(bCfg, (bKey, bField) => {
+            let foreignFieldDef = _.get(this._types, `["${bType}"].fields["${bField}"]`)
+            _.set(_backend, `computed.relations.belongsTo["${bType}"]["${bField}"]`, {
+              primary: fieldName,
+              foreign: bKey,
+              many: _.isArray(getType(foreignFieldDef))
+            })
+          })
+        })
+      }
+
+      // add a has relationship to the nested type. this is because the nested types resolve
+      // will determine how it returns data
+      if (has) {
+        _.set(this._types, `["${typeName}"]._backend.computed.relations.has["${name}"]["${fieldName}"]`, {
+          foreign: has,
+          many: _.isArray(type)
+        })
+      }
+    })
+  })
 }
 
 export function make () {
-
   // analyze each type and construct graphql schemas
   _.forEach(this._types, (definition, tname) => {
+
     let { fields, _backend } = definition
 
     // verify that the type at least has fields
@@ -110,7 +111,9 @@ export function make () {
     let mutationName = `${schemaName}Mutation`
 
     // update the backend
-    _backend.computed = { schemaName, queryName, mutationName, collection, store, relations: {} }
+    _backend.computed = { schemaName, queryName, mutationName, collection, store }
+
+    // if (!_.get(_backend, 'computed.relations')) _.set(_backend, 'computed.relations', {})
 
     // add to the queries
     if (query !== false && collection) {
@@ -163,6 +166,8 @@ export function make () {
       })
     }
   })
+
+  makeRelations.call(this)
 }
 
 export default make

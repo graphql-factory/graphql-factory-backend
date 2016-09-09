@@ -12,7 +12,7 @@ let config = {
       fields: {
         id: { type: 'String', primary: true },
         name: 'String',
-        list: { type: 'List', has: { List: { key: 'id' } } }
+        list: { type: 'List', has: 'id' }
       },
       _backend: {
         collection: 'person'
@@ -55,7 +55,8 @@ let backend = RethinkDBBackend('List', graphql, factory, rethinkdbdash(), config
 // console.log(JSON.stringify(_.omit(backend.plugin, 'globals'), null, '  '))
 let lib = backend.lib
 
-lib.List('{ readList {id, name, items { id, name } } }')
+lib.List('{ readPerson { id, name, list { id, name, items { id, name } } } }')
+// lib.List('{ readList {id, name, items { id, name } } }')
   .then((results) => {
     console.log(JSON.stringify(results, null, '  '))
     process.exit()
