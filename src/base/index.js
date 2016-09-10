@@ -1,5 +1,6 @@
 import _ from 'lodash'
 import make from './make'
+import { promiseMap } from './common'
 
 // base class for factory backend, all backends should extend this class
 export default class GraphQLFactoryBaseBackend {
@@ -17,10 +18,11 @@ export default class GraphQLFactoryBaseBackend {
     let _plugin = _.get(config, 'plugin', [])
 
     // set crud methods
-    this._create = crud.create
-    this._read = crud.read
-    this._update = crud.update
-    this._delete = crud.delete
+    this._create = crud.create.bind(this)
+    this._read = crud.read.bind(this)
+    this._update = crud.update.bind(this)
+    this._delete = crud.delete.bind(this)
+    this.initStore = crud.initStore.bind(this)
 
     // check the config object
     this._plugin = _.isArray(_plugin) ? _plugin : [_plugin]
@@ -89,6 +91,66 @@ export default class GraphQLFactoryBaseBackend {
       }
     }), undefined)
 
+  }
+
+  // determine if the resolve is nested
+  isNested (info) {
+    return _.get(info, 'path', []).length > 1
+  }
+
+  // get parent type
+  getParentType (info) {
+    return _.get(info, 'parentType')
+  }
+
+  // current path
+  getCurrentPath (info) {
+    return _.last(_.get(info, 'path'))
+  }
+
+  // get type definition
+  getTypeDefinition (type) {
+    return _.get(this._types, type, {})
+  }
+
+  // get type backend
+  getTypeBackend (type) {
+    return _.get(this.getTypeDefinition(type), '_backend')
+  }
+
+  // get type fields
+  getTypeFields (type) {
+    return _.get(this.getTypeDefinition(type), 'fields')
+  }
+
+  // get relations
+  getRelations (type, info) {
+    let _backend = this.getTypeBackend(type)
+    let parentType = this.getParentType(info)
+    let cpath = this.getCurrentPath(info)
+    let belongsTo = _.get(_backend, `computed.relations.belongsTo["${parentType.name}"]["${cpath}"]`, {})
+    let has = _.get(_backend, `computed.relations.has["${parentType.name}"]["${cpath}"]`, {})
+    return { has, belongsTo }
+  }
+
+  // maps promise results
+  mapPromise (list) {
+    return promiseMap(list)
+  }
+
+  // init all stores
+  initAllStores (rebuild, seedData) {
+    if (!_.isBoolean(rebuild)) {
+      seedData = _.isObject(rebuild) ? rebuild : {}
+      rebuild = false
+    }
+
+    let ops = _.map(this._types, (t, type) => {
+      let data = _.get(seedData, type, [])
+      return this.initStore(type, rebuild, _.isArray(data) ? data : [])
+    })
+
+    return promiseMap(ops)
   }
 
   // returns a lib object lazily, make it only once
