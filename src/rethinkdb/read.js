@@ -2,9 +2,9 @@ import _ from 'lodash'
 
 export default function read (type) {
   let backend = this
-  let { namespace, _types, getPrimary } = this
-  let definition = _.get(_types, type, {})
-  let { _backend, fields } = definition
+  let { getPrimary, getRelations, isNested, getTypeDefinition } = backend
+  // let definition = _.get(_types, type, {})
+  let { _backend, fields } = getTypeDefinition(type) // definition
   let { collection, store } = _backend.computed
 
   // resolve function
@@ -15,11 +15,12 @@ export default function read (type) {
     let filter = table
     let argKeys = _.keys(args)
     let priKeys = _.isArray(primary) ? primary : [primary]
-    let parentType = _.get(info, 'parentType')
-    let nested = _.get(info, 'path', []).length > 1
-    let cpath = _.last(info.path)
-    let belongsTo = _.get(_backend, `computed.relations.belongsTo["${parentType.name}"]["${cpath}"]`, {})
-    let has = _.get(_backend, `computed.relations.has["${parentType.name}"]["${cpath}"]`, {})
+    //let parentType = _.get(info, 'parentType')
+    let nested = isNested(info) // _.get(info, 'path', []).length > 1
+    // let cpath = _.last(info.path)
+    let { belongsTo, has } = getRelations(type, info)
+    // let belongsTo = _.get(_backend, `computed.relations.belongsTo["${parentType.name}"]["${cpath}"]`, {})
+    // let has = _.get(_backend, `computed.relations.has["${parentType.name}"]["${cpath}"]`, {})
     let many = true
 
     // check for nested with belongsTo relationship
