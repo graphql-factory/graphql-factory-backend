@@ -133,6 +133,17 @@ export default class GraphQLFactoryBaseBackend {
     return { has, belongsTo }
   }
 
+  // get type info
+  getTypeInfo (type, info) {
+    let { _backend: { computed: { collection, store } }, fields } = this.getTypeDefinition(type)
+    let primary = this.getPrimary(fields)
+    let primaryKey = _.isArray(primary) ? primary : [primary]
+    let nested = this.isNested(info)
+    let currentPath = this.getCurrentPath(info)
+    let { belongsTo, has } = this.getRelations(type, info)
+    return { collection, store, fields, primary, primaryKey, nested, currentPath, belongsTo, has }
+  }
+
   // maps promise results
   mapPromise (list) {
     return promiseMap(list)
