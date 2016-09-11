@@ -10,8 +10,8 @@ let backend = RethinkDBBackend('List', graphql, factory, rethinkdbdash(), config
 let lib = backend.lib
 
 // lib.List('mutation Mutation { deleteItem (id: "965a4c0c-2611-46a1-b57b-bd2cb3626458") }')
-// lib.List('mutation Mutation { updateItem (id: "965a4c0c-2611-46a1-b57b-bd2cb3626458", name: "item10") { id, name } }')
-// lib.List('mutation Mutation { createItem (name: "item10") { id, name } }')
+//lib.List('mutation Mutation { updateItem (id: "3da3517b-213f-43d8-b794-5d6928e27edf", name: "Coal") { id, name } }')
+//lib.List('mutation Mutation { createItem (name: "item11") { id, name } }')
 
 lib.List('{ readPerson (name: "Jane") { id, name, list { id, name, items { id, name } } } }')
 // lib.List('{ readList {id, name, items { id, name } } }')

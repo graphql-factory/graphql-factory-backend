@@ -1,7 +1,7 @@
 import _ from 'lodash'
 
 // gets relationships defined in the type definition and also
-export function getRelationFilter (type, info, source, filter, backend) {
+export function getRelationFilter (type, backend, source, info, filter) {
   let many = true
   let { fields, nested, currentPath, belongsTo, has } = backend.getTypeInfo(type, info)
 
@@ -25,7 +25,7 @@ export function getRelationFilter (type, info, source, filter, backend) {
 }
 
 // creates a filter based on the arguments
-export function getArgsFilter (type, args, filter, backend) {
+export function getArgsFilter (type, backend, args, filter) {
 
   let argKeys = _.keys(args)
   let primaryKey = backend.getPrimary(type)
@@ -42,7 +42,34 @@ export function getArgsFilter (type, args, filter, backend) {
   return filter
 }
 
+// determines unique constraints and if any have been violated
+export function violatesUnique (type, backend, args, filter) {
+  let { r } = backend
+  let { fields } = backend.getTypeDefinition(type)
+  let unique = backend.getUnique(fields, args)
+
+  // do a unique field check if any are specified
+  if (unique.length) {
+    return filter.filter((obj) => {
+      return r.expr(unique)
+        .prepend(obj)
+        .reduce((left, right) => {
+          return left.and(
+            right('type').eq('String').branch(
+              obj(right('field')).match(r.add('(?i)^', right('value'), '$')),
+              obj(right('field')).eq(right('value'))
+            )
+          )
+        })
+    })
+      .count()
+      .ne(0)
+  }
+  return filter.do(() => r.expr(false))
+}
+
 export default {
   getRelationFilter,
-  getArgsFilter
+  getArgsFilter,
+  violatesUnique
 }

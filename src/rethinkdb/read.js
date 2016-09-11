@@ -6,10 +6,10 @@ export default function read (type) {
     let { r, connection } = backend
     let { collection, store } = backend.getTypeInfo(type, info)
     let table = r.db(store).table(collection)
-    let { filter, many } = backend.filter.getRelationFilter (type, info, source, table, backend)
+    let { filter, many } = backend.filter.getRelationFilter (type, backend, source, info, table)
 
     // filter args
-    filter = backend.filter.getArgsFilter(type, args, filter, backend)
+    filter = backend.filter.getArgsFilter(type, backend, args, filter)
 
     // add standard query modifiers
     if (_.isNumber(args.limit)) filter = filter.limit(args.limit)
