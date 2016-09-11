@@ -1,6 +1,6 @@
 import _ from 'lodash'
 import make from './make'
-import { promiseMap } from './common'
+import { promiseMap, isPromise } from './common'
 
 // base class for factory backend, all backends should extend this class
 export default class GraphQLFactoryBaseBackend {
@@ -17,6 +17,9 @@ export default class GraphQLFactoryBaseBackend {
     // get any plugins, the backend will be merged into these plugins before it is exported
     let _plugin = _.get(config, 'plugin', [])
 
+    // get collection prefix
+    this._prefix = _.get(config, 'options.prefix', '')
+
     // set crud methods
     this._create = crud.create.bind(this)
     this._read = crud.read.bind(this)
@@ -24,6 +27,7 @@ export default class GraphQLFactoryBaseBackend {
     this._delete = crud.delete.bind(this)
     this.initStore = crud.initStore.bind(this)
     this.filter = crud.filter
+    this.util = crud.util(this)
 
     // check the config object
     this._plugin = _.isArray(_plugin) ? _plugin : [_plugin]
@@ -35,6 +39,9 @@ export default class GraphQLFactoryBaseBackend {
     this.graphql = graphql
     this.factory = factory(this.graphql)
     this.defaultStore = 'test'
+
+    // tools
+    this.util.isPromise = isPromise
 
     // factory properties
     this._definition = {
@@ -141,11 +148,24 @@ export default class GraphQLFactoryBaseBackend {
 
   // get type info
   getTypeInfo (type, info) {
-    let { _backend: { computed: { primary, primaryKey, collection, store } }, fields } = this.getTypeDefinition(type)
+    let { _backend, fields } = this.getTypeDefinition(type)
+    let { computed: { primary, primaryKey, collection, store, before } } = _backend
     let nested = this.isNested(info)
     let currentPath = this.getCurrentPath(info)
     let { belongsTo, has } = this.getRelations(type, info)
-    return { collection, store, fields, primary, primaryKey, nested, currentPath, belongsTo, has }
+    return {
+      _backend,
+      before,
+      collection,
+      store,
+      fields,
+      primary,
+      primaryKey,
+      nested,
+      currentPath,
+      belongsTo,
+      has
+    }
   }
 
   // get primary args as a single value

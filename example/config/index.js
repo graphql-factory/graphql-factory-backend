@@ -53,7 +53,14 @@ export const config = {
         list: { type: 'String', belongsTo: { List: { items: 'id' } } }
       },
       _backend: {
-        collection: 'item'
+        collection: 'item',
+        mutation: {
+          create: {
+            before (source, args, context, info) {
+              args.name = `${args.name}${Date.now()}`
+            }
+          }
+        }
       }
     },
     Compound: {

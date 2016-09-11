@@ -3,6 +3,10 @@ import _ from 'lodash'
 // primitive graphql types
 export const PRIMITIVES = ['String', 'Int', 'Float', 'Boolean', 'ID']
 
+export function defaultBefore () {
+  return Promise.resolve()
+}
+
 export function isPrimitive (type) {
   if (_.isArray(type)) {
     if (type.length !== 1) return false
@@ -102,7 +106,7 @@ export function make () {
     let { schema, table, collection, store, db, mutation, query } = _backend
 
     // allow the collection to be specified as the collection or table field
-    collection = collection || table
+    collection = `${this._prefix}${collection || table}`
     store = store || db || this.defaultStore
 
     // check that the type has a schema identified, otherwise create a schema with the namespace
@@ -115,7 +119,16 @@ export function make () {
     let primaryKey = _backend.primaryKey || _.isArray(primary) ? _.camelCase(primary.join('-')) : primary
 
     // update the backend
-    _backend.computed = { primary, primaryKey, schemaName, queryName, mutationName, collection, store }
+    _backend.computed = {
+      primary,
+      primaryKey,
+      schemaName,
+      queryName,
+      mutationName,
+      collection,
+      store,
+      before: {}
+    }
 
 
     // add to the queries
@@ -140,6 +153,10 @@ export function make () {
         } else if (_.isFunction(_.get(q, 'resolve'))) {
           _.set(this._definition, `functions.${queryFieldName}`, q.resolve)
         }
+
+        // check for before stub
+        let before = _.isFunction(q.before) ? q.before.bind(this) : defaultBefore
+        _.set(_backend, `computed.before["${queryFieldName}"]`, before)
       })
     }
 
@@ -161,11 +178,16 @@ export function make () {
           resolve: `${mutationFieldName}`
         })
 
+        // check for mutation resolve
         if (m === true || !_.has(m, 'resolve')) {
           _.set(this._definition, `functions.${mutationFieldName}`, this[`_${mname}`](tname))
         } else if (_.isFunction(_.get(m, 'resolve'))) {
           _.set(this._definition, `functions.${mutationFieldName}`, m.resolve)
         }
+
+        // check for before stub
+        let before = _.isFunction(m.before) ? m.before.bind(this) : defaultBefore
+        _.set(_backend, `computed.before["${mutationFieldName}"]`, before)
       })
     }
   })

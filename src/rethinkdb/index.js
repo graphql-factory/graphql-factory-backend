@@ -6,9 +6,10 @@ import update from './update'
 import del from './delete'
 import initStore from './initStore'
 import filter from './filter'
+import util from './util'
 
 // rethinkdb specific modules
-let crud = { create, read, update, delete: del, initStore, filter }
+let crud = { create, read, update, delete: del, initStore, filter, util }
 
 // extended backend class for RethinkDB
 class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBackend {
