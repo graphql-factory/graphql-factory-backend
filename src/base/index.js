@@ -23,6 +23,7 @@ export default class GraphQLFactoryBaseBackend {
     this._update = crud.update.bind(this)
     this._delete = crud.delete.bind(this)
     this.initStore = crud.initStore.bind(this)
+    this.filter = crud.filter
 
     // check the config object
     this._plugin = _.isArray(_plugin) ? _plugin : [_plugin]
