@@ -1,16 +1,14 @@
 import _ from 'lodash'
 
-// TODO: support for array primary key
-
 export default function update (type) {
   let backend = this
   return function (source, args, context, info) {
 
     let { r, connection } = backend
-    let { collection, store, primary } = backend.getTypeInfo(type, info)
+    let { collection, store, primary, primaryKey } = backend.getTypeBackend(type)
     let table = r.db(store).table(collection)
-    let id = args[primary]
-    let notThis = table.filter((obj) => obj(primary).ne(id))
+    let id = backend.getPrimaryFromArgs(type, args)
+    let notThis = backend.filter.notThisRecord(type, backend, args, table)
 
     let filter = backend.filter.violatesUnique(type, backend, args, notThis)
       .branch(

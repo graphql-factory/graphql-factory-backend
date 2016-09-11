@@ -1,7 +1,14 @@
 import _ from 'lodash'
 
+export function getCollectionFilter (type, backend) {
+  let { r } = backend
+  let { collection, store } = backend.getTypeBackend(type)
+  return r.db(store).collection(collection)
+}
+
 // gets relationships defined in the type definition and also
 export function getRelationFilter (type, backend, source, info, filter) {
+  filter = filter || getCollectionFilter(type, backend)
   let many = true
   let { fields, nested, currentPath, belongsTo, has } = backend.getTypeInfo(type, info)
 
@@ -26,14 +33,13 @@ export function getRelationFilter (type, backend, source, info, filter) {
 
 // creates a filter based on the arguments
 export function getArgsFilter (type, backend, args, filter) {
-
+  filter = filter || getCollectionFilter(type, backend)
   let argKeys = _.keys(args)
-  let primaryKey = backend.getPrimary(type)
+  let { primary } = backend.getTypeComputed(type)
 
   // check if the primary keys were supplied
-  if (_.intersection(primaryKey, argKeys).length === argKeys.length && argKeys.length > 0) {
-    let priArgs = _.map(primaryKey, (pk) => args[pk])
-    priArgs = priArgs.length === 1 ? priArgs[0] : priArgs
+  if (_.intersection(primary, argKeys).length === argKeys.length && argKeys.length > 0) {
+    let priArgs = backend.getPrimaryFromArgs(type, args)
     filter = filter.get(priArgs).do((result) => result.eq(null).branch([], [result]))
   } else if (argKeys.length) {
     filter = filter.filter(args)
@@ -44,6 +50,7 @@ export function getArgsFilter (type, backend, args, filter) {
 
 // determines unique constraints and if any have been violated
 export function violatesUnique (type, backend, args, filter) {
+  filter = filter || getCollectionFilter(type, backend)
   let { r } = backend
   let { fields } = backend.getTypeDefinition(type)
   let unique = backend.getUnique(fields, args)
@@ -65,11 +72,21 @@ export function violatesUnique (type, backend, args, filter) {
       .count()
       .ne(0)
   }
-  return filter.do(() => r.expr(false))
+  return filter.coerceTo('array').do(() => r.expr(false))
+}
+
+// get records that are not this one from a previous filter
+export function notThisRecord (type, backend, args, filter) {
+  filter = filter || getCollectionFilter(type, backend)
+  let { primaryKey } = backend.getTypeBackend(type)
+  let id = backend.getPrimaryFromArgs(type, args)
+  return filter.filter((obj) => obj(primaryKey).ne(id))
 }
 
 export default {
+  getCollectionFilter,
   getRelationFilter,
   getArgsFilter,
-  violatesUnique
+  violatesUnique,
+  notThisRecord
 }

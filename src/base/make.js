@@ -110,10 +110,13 @@ export function make () {
     let queryName = `${schemaName}Query`
     let mutationName = `${schemaName}Mutation`
 
-    // update the backend
-    _backend.computed = { schemaName, queryName, mutationName, collection, store }
+    // get the primary key name
+    let primary = this.getPrimary(fields)
+    let primaryKey = _backend.primaryKey || _.isArray(primary) ? _.camelCase(primary.join('-')) : primary
 
-    // if (!_.get(_backend, 'computed.relations')) _.set(_backend, 'computed.relations', {})
+    // update the backend
+    _backend.computed = { primary, primaryKey, schemaName, queryName, mutationName, collection, store }
+
 
     // add to the queries
     if (query !== false && collection) {

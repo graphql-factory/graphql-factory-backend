@@ -1,7 +1,7 @@
 import _ from 'lodash'
 
-export function createTable (dbc, name) {
-  return dbc.tableCreate(name)
+export function createTable (dbc, name, primaryKey) {
+  return dbc.tableCreate(name, { primaryKey })
     .run()
     .then(() => `${name} Created`)
     .catch((err) => {
@@ -12,11 +12,11 @@ export function createTable (dbc, name) {
 
 export default function initStore (type, rebuild, seedData) {
   let { r, connection } = this
-  let { computed: { collection, store } } = this.getTypeBackend(type)
+  let { computed: { primaryKey, collection, store } } = this.getTypeBackend(type)
+
+  if (!collection || !store) throw new Error('Invalid store init config')
 
   let dbc = r.db(store)
-
-  if (!collection) throw new Error('Invalid store init config')
 
   // analyze the arguments
   if (!_.isBoolean(rebuild)) {
@@ -28,7 +28,7 @@ export default function initStore (type, rebuild, seedData) {
     .filter((name) => name.eq(collection))
     .forEach((name) => rebuild ? dbc.tableDrop(name) : dbc.table(collection).delete())
     .run(connection)
-    .then(() => createTable(dbc, collection))
+    .then(() => createTable(dbc, collection, primaryKey))
     .then((tablesCreated) => {
       if (seedData) return dbc.table(collection).insert(seedData).run(connection).then(() => tablesCreated)
       return tablesCreated

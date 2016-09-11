@@ -12,6 +12,10 @@ export const seedData = {
     { id: '645d1698-72a6-45e7-87fb-9da222c36bab', name: 'Egg', list: '86924e37-2953-4f5a-abf2-f9e5e615975f' },
     { id: 'b09573ae-70ac-42af-91c0-4f13abe7cd70', name: 'Bread', list: '86924e37-2953-4f5a-abf2-f9e5e615975f' },
     { id: '3da3517b-213f-43d8-b794-5d6928e27edf', name: 'Playstation', list: 'c26e4c0e-cb1e-4109-9b3f-383cd987a5f7' }
+  ],
+  Compound: [
+    { fnameLname: ['Doe', 'John'], fname: 'John', lname: 'Doe', nickname: 'Johnny' },
+    { fnameLname: ['Doe', 'Jane'], fname: 'Jane', lname: 'Doe', nickname: 'Janey' }
   ]
 }
 
@@ -50,6 +54,16 @@ export const config = {
       },
       _backend: {
         collection: 'item'
+      }
+    },
+    Compound: {
+      fields: {
+        fname: { type: 'String', primary: true },
+        lname: { type: 'String', primary: true },
+        nickname: { type: 'String' }
+      },
+      _backend: {
+        collection: 'compound'
       }
     }
   },

@@ -77,7 +77,7 @@ export default class GraphQLFactoryBaseBackend {
   // get the primary key or keys
   getPrimary (fields) {
     let primary = _(fields).pickBy((v) => v.primary === true).keys().value()
-    return !primary.length ? null : primary.length === 1 ? primary[0] : primary
+    return !primary.length ? 'id' : primary.length === 1 ? primary[0] : primary.sort()
   }
 
   // get keys marked with unique
@@ -124,6 +124,11 @@ export default class GraphQLFactoryBaseBackend {
     return _.get(this.getTypeDefinition(type), 'fields')
   }
 
+  // get computed
+  getTypeComputed (type) {
+    return _.get(this.getTypeDefinition(type), '_backend.computed')
+  }
+
   // get relations
   getRelations (type, info) {
     let _backend = this.getTypeBackend(type)
@@ -136,13 +141,29 @@ export default class GraphQLFactoryBaseBackend {
 
   // get type info
   getTypeInfo (type, info) {
-    let { _backend: { computed: { collection, store } }, fields } = this.getTypeDefinition(type)
-    let primary = this.getPrimary(fields)
-    let primaryKey = _.isArray(primary) ? primary : [primary]
+    let { _backend: { computed: { primary, primaryKey, collection, store } }, fields } = this.getTypeDefinition(type)
     let nested = this.isNested(info)
     let currentPath = this.getCurrentPath(info)
     let { belongsTo, has } = this.getRelations(type, info)
     return { collection, store, fields, primary, primaryKey, nested, currentPath, belongsTo, has }
+  }
+
+  // get primary args as a single value
+  getPrimaryFromArgs (type, args) {
+    let { primary } = this.getTypeComputed(type)
+    let pk = _.map(primary, (k) => _.get(args, k))
+    return pk.length === 1 ? pk[0] : pk
+  }
+
+  // update the args with potential compound primary
+  updateArgsWithPrimary (type, args) {
+    let newArgs = _.cloneDeep(args)
+    let { primary, primaryKey } = this.getTypeComputed(type)
+    let pk = this.getPrimaryFromArgs(type, args)
+    if (primary.length > 1 && _.without(pk, undefined).length === primary.length) {
+      newArgs = _.merge(newArgs, { [primaryKey]: pk })
+    }
+    return newArgs
   }
 
   // maps promise results
@@ -157,7 +178,14 @@ export default class GraphQLFactoryBaseBackend {
       rebuild = false
     }
 
-    let ops = _.map(this._types, (t, type) => {
+    // only init definitions with a collection and store specified
+    let canInit = () => {
+      return _.pickBy(this._types, (t) => {
+        return _.has(t, '_backend.computed.collection') && _.has(t, '_backend.computed.store')
+      })
+    }
+
+    let ops = _.map(canInit(), (t, type) => {
       let data = _.get(seedData, type, [])
       return this.initStore(type, rebuild, _.isArray(data) ? data : [])
     })
