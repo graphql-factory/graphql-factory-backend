@@ -27,9 +27,24 @@ export function makeFieldDef (fieldDef) {
   return newDef
 }
 
-export function getArgs (opType, definition, cfg, name) {
+export function computeUniques (fields) {
+  let [ mixed, uniques ] = [ {}, [] ]
+  _.forEach(fields, (fieldDef, field) => {
+    let type = _.isArray(fieldDef.type) ? _.get(fieldDef, 'type[0]') : fieldDef.type
+    if (fieldDef.unique === true) {
+      uniques.push([ { field, type } ])
+    } else if (_.isString(fieldDef.uniqueWith)) {
+      if (!_.isArray(mixed[fieldDef.uniqueWith])) mixed[fieldDef.uniqueWith] = [ { field, type } ]
+      else mixed[fieldDef.uniqueWith].push({ field, type })
+    }
+  })
+  _.forEach(mixed, (compound) => uniques.push(compound))
+  return _.uniq(uniques)
+}
+
+export function getArgs (opType, definition) {
   let args = {}
-  let { fields } = definition
+  let { fields, _backend } = definition
 
   if (opType === 'query') {
     args.limit = { type: 'Int' }
@@ -38,13 +53,27 @@ export function getArgs (opType, definition, cfg, name) {
   // examine each field
   _.forEach(fields, (fieldDef, fieldName) => {
     let type = getType(fieldDef)
+    let typeName = _.isArray(type) && type.length === 1 ? type[0] : type
     if (!type) return true
     fieldDef = fields[fieldName] = makeFieldDef(fieldDef)
 
     if (isPrimitive(type)) {
       args[fieldName] = { type }
-    } else if (fieldDef.resolve !== false && opType === 'query') {
-      fieldDef.resolve = fieldDef.resolve || `read${type}`
+    } else {
+      let fieldTypeBackend = _.get(this._types, `["${typeName}"]._backend`)
+
+      if (fieldDef.resolve !== false && opType === 'query' && fieldTypeBackend) {
+        fieldDef.resolve = fieldDef.resolve || `read${type}`
+      } else {
+        // add args for related types
+        if (fieldDef.belongsTo) {
+          args[fieldName]  = { type: 'String' }
+        } else if (fieldDef.has) {
+          args[fieldName] = _.isArray(fieldDef.type) ? ['String'] : 'String'
+        } else {
+          args[fieldName] = { type }
+        }
+      }
     }
   })
   return args
@@ -94,13 +123,11 @@ export function make () {
   _.forEach(this._types, (definition, tname) => {
 
     let { fields, _backend } = definition
-
-    // verify that the type at least has fields
-    if (!_.isObject(fields)) return true
     this._definition.types[tname] = definition
 
-    // check for a backend object config, if one doesnt exist this type is done
-    if (!_.isObject(_backend)) return true
+    // verify that the type at least has fields
+    // also check for a backend object config, if one doesnt exist this type is done
+    if (!_.isObject(fields) || !_.isObject(_backend)) return true
 
     // get deconstruct the backend config
     let { schema, table, collection, store, db, mutation, query } = _backend
@@ -118,6 +145,9 @@ export function make () {
     let primary = this.getPrimary(fields)
     let primaryKey = _backend.primaryKey || _.isArray(primary) ? _.camelCase(primary.join('-')) : primary
 
+    // get the uniques
+    let uniques = computeUniques(fields)
+
     // update the backend
     _backend.computed = {
       primary,
@@ -127,6 +157,7 @@ export function make () {
       mutationName,
       collection,
       store,
+      uniques,
       before: {}
     }
 
@@ -194,6 +225,23 @@ export function make () {
 
   // update the definitions with relations
   makeRelations.call(this)
+
+  // finally add args to sub fields for list types
+  _.forEach(this._types, (typeDef, typeName) => {
+    _.forEach(typeDef.fields, (fieldDef, fieldName) => {
+      let fieldType = getType(fieldDef)
+      let queryName = _.get(typeDef, '_backend.computed.queryName')
+
+      if (queryName && _.isArray(fieldType) && fieldType.length === 1 && fieldDef.args === undefined) {
+        let type = fieldType[0]
+        let field = _.get(this._definition.types, `["${queryName}"].fields["read${type}"]`, {})
+
+        if (field.resolve === `read${type}` && _.isObject(field.args)) {
+          _.set(this._definition.types, `["${typeName}"].fields["${fieldName}"].args`, field.args)
+        }
+      }
+    })
+  })
 }
 
 export default make

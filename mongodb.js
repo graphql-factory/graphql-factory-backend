@@ -30,9 +30,30 @@ function makeFieldDef(fieldDef) {
   return newDef;
 }
 
-function getArgs(opType, definition, cfg, name) {
+function computeUniques(fields) {
+  var mixed = {};
+  var uniques = [];
+
+  _.forEach(fields, function (fieldDef, field) {
+    var type = _.isArray(fieldDef.type) ? _.get(fieldDef, 'type[0]') : fieldDef.type;
+    if (fieldDef.unique === true) {
+      uniques.push([{ field: field, type: type }]);
+    } else if (_.isString(fieldDef.uniqueWith)) {
+      if (!_.isArray(mixed[fieldDef.uniqueWith])) mixed[fieldDef.uniqueWith] = [{ field: field, type: type }];else mixed[fieldDef.uniqueWith].push({ field: field, type: type });
+    }
+  });
+  _.forEach(mixed, function (compound) {
+    return uniques.push(compound);
+  });
+  return _.uniq(uniques);
+}
+
+function getArgs(opType, definition) {
+  var _this = this;
+
   var args = {};
   var fields = definition.fields;
+  var _backend = definition._backend;
 
 
   if (opType === 'query') {
@@ -42,13 +63,27 @@ function getArgs(opType, definition, cfg, name) {
   // examine each field
   _.forEach(fields, function (fieldDef, fieldName) {
     var type = getType(fieldDef);
+    var typeName = _.isArray(type) && type.length === 1 ? type[0] : type;
     if (!type) return true;
     fieldDef = fields[fieldName] = makeFieldDef(fieldDef);
 
     if (isPrimitive(type)) {
       args[fieldName] = { type: type };
-    } else if (fieldDef.resolve !== false && opType === 'query') {
-      fieldDef.resolve = fieldDef.resolve || 'read' + type;
+    } else {
+      var fieldTypeBackend = _.get(_this._types, '["' + typeName + '"]._backend');
+
+      if (fieldDef.resolve !== false && opType === 'query' && fieldTypeBackend) {
+        fieldDef.resolve = fieldDef.resolve || 'read' + type;
+      } else {
+        // add args for related types
+        if (fieldDef.belongsTo) {
+          args[fieldName] = { type: 'String' };
+        } else if (fieldDef.has) {
+          args[fieldName] = _.isArray(fieldDef.type) ? ['String'] : 'String';
+        } else {
+          args[fieldName] = { type: type };
+        }
+      }
     }
   });
   return args;
@@ -56,7 +91,7 @@ function getArgs(opType, definition, cfg, name) {
 
 // updates definitions with relationship data
 function makeRelations() {
-  var _this = this;
+  var _this2 = this;
 
   _.forEach(this._types, function (definition, name) {
     var fields = definition.fields;
@@ -78,7 +113,7 @@ function makeRelations() {
       if (belongsTo) {
         _.forEach(belongsTo, function (bCfg, bType) {
           _.forEach(bCfg, function (bKey, bField) {
-            var foreignFieldDef = _.get(_this._types, '["' + bType + '"].fields["' + bField + '"]');
+            var foreignFieldDef = _.get(_this2._types, '["' + bType + '"].fields["' + bField + '"]');
             _.set(_backend, 'computed.relations.belongsTo["' + bType + '"]["' + bField + '"]', {
               primary: fieldName,
               foreign: bKey,
@@ -91,7 +126,7 @@ function makeRelations() {
       // add a has relationship to the nested type. this is because the nested types resolve
       // will determine how it returns data
       if (has) {
-        _.set(_this._types, '["' + typeName + '"]._backend.computed.relations.has["' + name + '"]["' + fieldName + '"]', {
+        _.set(_this2._types, '["' + typeName + '"]._backend.computed.relations.has["' + name + '"]["' + fieldName + '"]', {
           foreign: has,
           many: _.isArray(type)
         });
@@ -101,20 +136,18 @@ function makeRelations() {
 }
 
 function make() {
-  var _this2 = this;
+  var _this3 = this;
 
   // analyze each type and construct graphql schemas
   _.forEach(this._types, function (definition, tname) {
     var fields = definition.fields;
     var _backend = definition._backend;
 
+    _this3._definition.types[tname] = definition;
+
     // verify that the type at least has fields
-
-    if (!_.isObject(fields)) return true;
-    _this2._definition.types[tname] = definition;
-
-    // check for a backend object config, if one doesnt exist this type is done
-    if (!_.isObject(_backend)) return true;
+    // also check for a backend object config, if one doesnt exist this type is done
+    if (!_.isObject(fields) || !_.isObject(_backend)) return true;
 
     // get deconstruct the backend config
     var schema = _backend.schema;
@@ -127,17 +160,20 @@ function make() {
 
     // allow the collection to be specified as the collection or table field
 
-    collection = '' + _this2._prefix + (collection || table);
-    store = store || db || _this2.defaultStore;
+    collection = '' + _this3._prefix + (collection || table);
+    store = store || db || _this3.defaultStore;
 
     // check that the type has a schema identified, otherwise create a schema with the namespace
-    var schemaName = _.isString(schema) ? schema : _this2.namespace;
+    var schemaName = _.isString(schema) ? schema : _this3.namespace;
     var queryName = schemaName + 'Query';
     var mutationName = schemaName + 'Mutation';
 
     // get the primary key name
-    var primary = _this2.getPrimary(fields);
+    var primary = _this3.getPrimary(fields);
     var primaryKey = _backend.primaryKey || _.isArray(primary) ? _.camelCase(primary.join('-')) : primary;
+
+    // get the uniques
+    var uniques = computeUniques(fields);
 
     // update the backend
     _backend.computed = {
@@ -148,12 +184,13 @@ function make() {
       mutationName: mutationName,
       collection: collection,
       store: store,
+      uniques: uniques,
       before: {}
     };
 
     // add to the queries
     if (query !== false && collection) {
-      _.set(_this2._definition.schemas, schemaName + '.query', queryName);
+      _.set(_this3._definition.schemas, schemaName + '.query', queryName);
       query = _.isObject(query) ? query : {};
 
       if (!query.read && query.read !== false) query.read = true;
@@ -162,27 +199,27 @@ function make() {
       _.forEach(query, function (q, qname) {
         var queryFieldName = qname === 'read' ? '' + qname + tname : qname;
 
-        _.set(_this2._definition.types, queryName + '.fields.' + queryFieldName, {
+        _.set(_this3._definition.types, queryName + '.fields.' + queryFieldName, {
           type: q.type || [tname],
-          args: q.args || getArgs.call(_this2, 'query', definition, q, qname),
+          args: q.args || getArgs.call(_this3, 'query', definition, q, qname),
           resolve: '' + queryFieldName
         });
 
         if (q === true || !_.has(q, 'resolve')) {
-          _.set(_this2._definition, 'functions.' + queryFieldName, _this2._read(tname));
+          _.set(_this3._definition, 'functions.' + queryFieldName, _this3._read(tname));
         } else if (_.isFunction(_.get(q, 'resolve'))) {
-          _.set(_this2._definition, 'functions.' + queryFieldName, q.resolve);
+          _.set(_this3._definition, 'functions.' + queryFieldName, q.resolve);
         }
 
         // check for before stub
-        var before = _.isFunction(q.before) ? q.before.bind(_this2) : defaultBefore;
+        var before = _.isFunction(q.before) ? q.before.bind(_this3) : defaultBefore;
         _.set(_backend, 'computed.before["' + queryFieldName + '"]', before);
       });
     }
 
     // add to the mutations
     if (mutation !== false && collection) {
-      _.set(_this2._definition.schemas, schemaName + '.mutation', mutationName);
+      _.set(_this3._definition.schemas, schemaName + '.mutation', mutationName);
       mutation = _.isObject(mutation) ? mutation : {};
       if (!mutation.create && mutation.create !== false) mutation.create = true;
       if (!mutation.update && mutation.update !== false) mutation.update = true;
@@ -192,21 +229,21 @@ function make() {
       _.forEach(mutation, function (m, mname) {
         var mutationFieldName = _.includes(['create', 'update', 'delete'], mname) ? '' + mname + tname : mname;
 
-        _.set(_this2._definition.types, mutationName + '.fields.' + mutationFieldName, {
+        _.set(_this3._definition.types, mutationName + '.fields.' + mutationFieldName, {
           type: m.type || mname === 'delete' ? 'Boolean' : tname,
-          args: m.args || getArgs.call(_this2, 'mutation', definition, m, mname),
+          args: m.args || getArgs.call(_this3, 'mutation', definition, m, mname),
           resolve: '' + mutationFieldName
         });
 
         // check for mutation resolve
         if (m === true || !_.has(m, 'resolve')) {
-          _.set(_this2._definition, 'functions.' + mutationFieldName, _this2['_' + mname](tname));
+          _.set(_this3._definition, 'functions.' + mutationFieldName, _this3['_' + mname](tname));
         } else if (_.isFunction(_.get(m, 'resolve'))) {
-          _.set(_this2._definition, 'functions.' + mutationFieldName, m.resolve);
+          _.set(_this3._definition, 'functions.' + mutationFieldName, m.resolve);
         }
 
         // check for before stub
-        var before = _.isFunction(m.before) ? m.before.bind(_this2) : defaultBefore;
+        var before = _.isFunction(m.before) ? m.before.bind(_this3) : defaultBefore;
         _.set(_backend, 'computed.before["' + mutationFieldName + '"]', before);
       });
     }
@@ -214,6 +251,23 @@ function make() {
 
   // update the definitions with relations
   makeRelations.call(this);
+
+  // finally add args to sub fields for list types
+  _.forEach(this._types, function (typeDef, typeName) {
+    _.forEach(typeDef.fields, function (fieldDef, fieldName) {
+      var fieldType = getType(fieldDef);
+      var queryName = _.get(typeDef, '_backend.computed.queryName');
+
+      if (queryName && _.isArray(fieldType) && fieldType.length === 1 && fieldDef.args === undefined) {
+        var type = fieldType[0];
+        var field = _.get(_this3._definition.types, '["' + queryName + '"].fields["read' + type + '"]', {});
+
+        if (field.resolve === 'read' + type && _.isObject(field.args)) {
+          _.set(_this3._definition.types, '["' + typeName + '"].fields["' + fieldName + '"].args', field.args);
+        }
+      }
+    });
+  });
 }
 
 function isPromise(obj) {
@@ -300,6 +354,13 @@ var possibleConstructorReturn = function (self, call) {
   return call && (typeof call === "object" || typeof call === "function") ? call : self;
 };
 
+/*
+ * Options
+ * {
+ *   store: 'store name to default to'
+ * }
+ */
+
 // base class for factory backend, all backends should extend this class
 
 var GraphQLFactoryBaseBackend = function () {
@@ -344,7 +405,7 @@ var GraphQLFactoryBaseBackend = function () {
     this.namespace = namespace;
     this.graphql = graphql;
     this.factory = factory(this.graphql);
-    this.defaultStore = 'test';
+    this.defaultStore = this.options.store || this.defaultStore || 'test';
 
     // tools
     this.util.isPromise = isPromise;
@@ -385,22 +446,28 @@ var GraphQLFactoryBaseBackend = function () {
       return !primary.length ? 'id' : primary.length === 1 ? primary[0] : primary.sort();
     }
 
-    // get keys marked with unique
+    // create a unique args object
 
   }, {
-    key: 'getUnique',
-    value: function getUnique(fields, args) {
-      return _.without(_.map(_.pickBy(fields, function (v) {
-        return v.unique === true;
-      }), function (v, field) {
-        var value = _.get(args, field);
-        if (value === undefined) return;
-        return {
-          field: field,
-          type: _.isArray(v.type) ? _.get(v, 'type[0]', 'Undefined') : _.get(v, 'type', 'Undefined'),
-          value: value
-        };
-      }), undefined);
+    key: 'getUniqueArgs',
+    value: function getUniqueArgs(type, args) {
+      var filters = [];
+
+      var _getTypeBackend = this.getTypeBackend(type);
+
+      var uniques = _getTypeBackend.computed.uniques;
+
+      _.forEach(uniques, function (unique) {
+        var ufields = _.map(unique, function (u) {
+          return u.field;
+        });
+        if (_.intersection(_.keys(args), ufields).length === ufields.length) {
+          filters.push(_.map(unique, function (u) {
+            return _.merge({}, u, { value: _.get(args, u.field) });
+          }));
+        }
+      });
+      return filters;
     }
 
     // determine if the resolve is nested
@@ -472,15 +539,51 @@ var GraphQLFactoryBaseBackend = function () {
       return { has: has, belongsTo: belongsTo };
     }
 
+    // get related values
+
+  }, {
+    key: 'getRelatedValues',
+    value: function getRelatedValues(type, args) {
+      var _this2 = this;
+
+      var values = [];
+
+      var _getTypeDefinition = this.getTypeDefinition(type);
+
+      var fields = _getTypeDefinition.fields;
+
+
+      _.forEach(args, function (arg, name) {
+        var fieldDef = _.get(fields, name, {});
+        var related = _.has(fieldDef, 'has') || _.has(fieldDef, 'belongsTo');
+        var fieldType = _.get(fieldDef, 'type', fieldDef);
+        var isList = _.isArray(fieldType);
+        var typeName = isList && fieldType.length === 1 ? fieldType[0] : fieldType;
+        var typeDef = _.get(_this2._types, typeName, {});
+        var computed = _.get(typeDef, '_backend.computed');
+        if (computed && related) {
+          (function () {
+            var store = computed.store;
+            var collection = computed.collection;
+
+            values = _.union(values, _.map(isList ? arg : [arg], function (id) {
+              return { store: store, collection: collection, id: id };
+            }));
+          })();
+        }
+      });
+      return values;
+    }
+
     // get type info
 
   }, {
     key: 'getTypeInfo',
     value: function getTypeInfo(type, info) {
-      var _getTypeDefinition = this.getTypeDefinition(type);
+      var _getTypeDefinition2 = this.getTypeDefinition(type);
 
-      var _backend = _getTypeDefinition._backend;
-      var fields = _getTypeDefinition.fields;
+      var _backend = _getTypeDefinition2._backend;
+      var fields = _getTypeDefinition2.fields;
       var _backend$computed = _backend.computed;
       var primary = _backend$computed.primary;
       var primaryKey = _backend$computed.primaryKey;
@@ -558,7 +661,7 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'initAllStores',
     value: function initAllStores(rebuild, seedData) {
-      var _this2 = this;
+      var _this3 = this;
 
       if (!_.isBoolean(rebuild)) {
         seedData = _.isObject(rebuild) ? rebuild : {};
@@ -567,14 +670,14 @@ var GraphQLFactoryBaseBackend = function () {
 
       // only init definitions with a collection and store specified
       var canInit = function canInit() {
-        return _.pickBy(_this2._types, function (t) {
+        return _.pickBy(_this3._types, function (t) {
           return _.has(t, '_backend.computed.collection') && _.has(t, '_backend.computed.store');
         });
       };
 
       var ops = _.map(canInit(), function (t, type) {
         var data = _.get(seedData, type, []);
-        return _this2.initStore(type, rebuild, _.isArray(data) ? data : []);
+        return _this3.initStore(type, rebuild, _.isArray(data) ? data : []);
       });
 
       return promiseMap(ops);

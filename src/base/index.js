@@ -2,6 +2,14 @@ import _ from 'lodash'
 import make from './make'
 import { promiseMap, isPromise } from './common'
 
+
+/*
+ * Options
+ * {
+ *   store: 'store name to default to'
+ * }
+ */
+
 // base class for factory backend, all backends should extend this class
 export default class GraphQLFactoryBaseBackend {
   constructor (namespace, graphql, factory, config = {}, crud = {}) {
@@ -38,7 +46,7 @@ export default class GraphQLFactoryBaseBackend {
     this.namespace = namespace
     this.graphql = graphql
     this.factory = factory(this.graphql)
-    this.defaultStore = 'test'
+    this.defaultStore = this.options.store || this.defaultStore || 'test'
 
     // tools
     this.util.isPromise = isPromise
@@ -87,18 +95,17 @@ export default class GraphQLFactoryBaseBackend {
     return !primary.length ? 'id' : primary.length === 1 ? primary[0] : primary.sort()
   }
 
-  // get keys marked with unique
-  getUnique (fields, args) {
-    return _.without(_.map(_.pickBy(fields, (v) => v.unique === true), (v, field) => {
-      let value = _.get(args, field)
-      if (value === undefined) return
-      return {
-        field,
-        type: _.isArray(v.type) ? _.get(v, 'type[0]', 'Undefined') : _.get(v, 'type', 'Undefined'),
-        value
+  // create a unique args object
+  getUniqueArgs (type, args) {
+    let filters = []
+    let { computed: { uniques } } = this.getTypeBackend(type)
+    _.forEach(uniques, (unique) => {
+      let ufields = _.map(unique, (u) => u.field)
+      if (_.intersection(_.keys(args), ufields).length === ufields.length) {
+        filters.push(_.map(unique, (u) => _.merge({}, u, { value: _.get(args, u.field) })))
       }
-    }), undefined)
-
+    })
+    return filters
   }
 
   // determine if the resolve is nested
@@ -144,6 +151,29 @@ export default class GraphQLFactoryBaseBackend {
     let belongsTo = _.get(_backend, `computed.relations.belongsTo["${parentType.name}"]["${cpath}"]`, {})
     let has = _.get(_backend, `computed.relations.has["${parentType.name}"]["${cpath}"]`, {})
     return { has, belongsTo }
+  }
+
+  // get related values
+  getRelatedValues (type, args) {
+    let values = []
+    let { fields } = this.getTypeDefinition(type)
+
+    _.forEach(args, (arg, name) => {
+      let fieldDef = _.get(fields, name, {})
+      let related = _.has(fieldDef, 'has') || _.has(fieldDef, 'belongsTo')
+      let fieldType = _.get(fieldDef, 'type', fieldDef)
+      let isList = _.isArray(fieldType)
+      let typeName = isList && fieldType.length === 1 ? fieldType[0] : fieldType
+      let typeDef = _.get(this._types, typeName, {})
+      let computed = _.get(typeDef, '_backend.computed')
+      if (computed && related) {
+        let { store, collection } = computed
+        values = _.union(values, _.map(isList ? arg : [ arg ], (id) => {
+          return { store, collection, id }
+        }))
+      }
+    })
+    return values
   }
 
   // get type info

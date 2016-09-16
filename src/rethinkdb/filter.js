@@ -52,20 +52,21 @@ export function getArgsFilter (type, backend, args, filter) {
 export function violatesUnique (type, backend, args, filter) {
   filter = filter || getCollectionFilter(type, backend)
   let { r } = backend
-  let { fields } = backend.getTypeDefinition(type)
-  let unique = backend.getUnique(fields, args)
+  let unique = backend.getUniqueArgs(type, args)
 
-  // do a unique field check if any are specified
   if (unique.length) {
     return filter.filter((obj) => {
       return r.expr(unique)
-        .prepend(obj)
-        .reduce((left, right) => {
-          return left.and(
-            right('type').eq('String').branch(
-              obj(right('field')).match(r.add('(?i)^', right('value'), '$')),
-              obj(right('field')).eq(right('value'))
-            )
+        .prepend(true)
+        .reduce((prevUniq, uniq) => {
+          return prevUniq.and(
+            uniq.prepend(true)
+              .reduce((prevField, field) => {
+                return prevField.and(field('type').eq('String').branch(
+                  obj(field('field')).match(r.add('(?i)^', field('value'), '$')),
+                  obj(field('field')).eq(field('value'))
+                ))
+              })
           )
         })
     })

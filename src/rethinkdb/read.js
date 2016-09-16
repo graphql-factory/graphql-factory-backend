@@ -3,7 +3,7 @@ import _ from 'lodash'
 export default function read (type) {
   let backend = this
   return function (source, args, context, info) {
-    let { r, connection } = backend
+    let { r, connection, util } = backend
     let { collection, store, before } = backend.getTypeInfo(type, info)
     let table = r.db(store).table(collection)
     let { filter, many } = backend.filter.getRelationFilter (type, backend, source, info, table)
@@ -29,8 +29,8 @@ export default function read (type) {
     }
 
     // run before stub
-    let resolveBefore = beforeHook(source, args, context, info)
-    if (backend.util.isPromise(resolveBefore)) return resolveBefore.then(query)
+    let resolveBefore = beforeHook.call({ factory: this, backend }, source, args, context, info)
+    if (util.isPromise(resolveBefore)) return resolveBefore.then(query)
     return query()
   }
 }

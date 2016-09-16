@@ -12,7 +12,7 @@ import util from './util'
 let crud = { create, read, update, delete: del, initStore, filter, util }
 
 // extended backend class for RethinkDB
-class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBackend {
+export class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBackend {
   constructor (namespace, graphql, factory, r, config, connection) {
     super(namespace, graphql, factory, config, crud)
     this.type = 'GraphQLFactoryRethinkDBBackend'

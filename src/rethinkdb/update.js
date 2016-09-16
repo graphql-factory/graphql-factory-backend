@@ -4,32 +4,25 @@ export default function update (type) {
   let backend = this
   return function (source, args, context, info) {
 
-    let { r, connection } = backend
+    let { r, connection, util } = backend
     let { collection, store, primary, before } = backend.getTypeInfo(type, info)
     let table = r.db(store).table(collection)
     let beforeHook = _.get(before, `update${type}`)
 
     // main query
     let query = () => {
-      let id = backend.getPrimaryFromArgs(type, args)
       let notThis = backend.filter.notThisRecord(type, backend, args, table)
-
-      let filter = backend.filter.violatesUnique(type, backend, args, notThis)
+      return backend.filter.violatesUnique(type, backend, args, notThis)
         .branch(
           r.error('unique field violation'),
-          table.get(id).eq(null).branch(
-            r.error(`${type} not found`),
-            table.get(id).update(_.omit(args, primary))
-          )
+          util.update(type, args, { exists: backend.getRelatedValues(type, args) })
         )
-
-      // do the update
-      return filter.do(() => table.get(id)).run(connection)
+        .run(connection)
     }
 
     // run before stub
-    let resolveBefore = beforeHook(source, args, context, info)
-    if (backend.util.isPromise(resolveBefore)) return resolveBefore.then(query)
+    let resolveBefore = beforeHook.call({ factory: this, backend }, source, args, context, info)
+    if (util.isPromise(resolveBefore)) return resolveBefore.then(query)
     return query()
   }
 }
