@@ -3,9 +3,9 @@ import _ from 'lodash'
 export default function del (type) {
   let backend = this
   return function (source, args, context, info) {
-    let { util } = backend
+    let { util, q } = backend
     let beforeHook = _.get(before, `delete${type}`)
-    let query = () => util.exec(util.delete(type, args))
+    let query = () => q.type(type).delete(args).run()
 
     // run before stub
     let resolveBefore = beforeHook.call({ factory: this, backend }, source, args, context, info)

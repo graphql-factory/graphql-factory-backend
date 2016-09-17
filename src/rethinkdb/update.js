@@ -4,8 +4,8 @@ export default function update (type) {
   let backend = this
   return function (source, args, context, info) {
 
-    let { r, connection, util } = backend
-    let { collection, store, primary, before } = backend.getTypeInfo(type, info)
+    let { r, connection, util, q } = backend
+    let { collection, store, before } = backend.getTypeInfo(type, info)
     let table = r.db(store).table(collection)
     let beforeHook = _.get(before, `update${type}`)
 
@@ -15,7 +15,9 @@ export default function update (type) {
       return backend.filter.violatesUnique(type, backend, args, notThis)
         .branch(
           r.error('unique field violation'),
-          util.update(type, args, { exists: backend.getRelatedValues(type, args) })
+          q.type(type)
+            .update(args, { exists: backend.getRelatedValues(type, args) })
+            .value()
         )
         .run(connection)
     }

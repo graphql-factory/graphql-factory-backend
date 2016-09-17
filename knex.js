@@ -395,6 +395,7 @@ var GraphQLFactoryBaseBackend = function () {
     this.initStore = crud.initStore.bind(this);
     this.filter = crud.filter;
     this.util = crud.util(this);
+    this.q = crud.q(this);
 
     // check the config object
     this._plugin = _.isArray(_plugin) ? _plugin : [_plugin];

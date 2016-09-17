@@ -403,6 +403,7 @@ var GraphQLFactoryBaseBackend = function () {
     this.initStore = crud.initStore.bind(this);
     this.filter = crud.filter;
     this.util = crud.util(this);
+    this.q = crud.q(this);
 
     // check the config object
     this._plugin = _.isArray(_plugin) ? _plugin : [_plugin];
@@ -868,6 +869,7 @@ function create$2(type) {
     var r = backend.r;
     var connection = backend.connection;
     var util = backend.util;
+    var q = backend.q;
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info);
 
@@ -880,7 +882,7 @@ function create$2(type) {
 
     // main query
     var query = function query() {
-      var filter = backend.filter.violatesUnique(type, backend, args, table).branch(r.error('unique field violation'), util.insert(type, args, { exists: backend.getRelatedValues(type, args) }));
+      var filter = backend.filter.violatesUnique(type, backend, args, table).branch(r.error('unique field violation'), q.type(type).insert(args, { exists: backend.getRelatedValues(type, args) }).value());
 
       // do the update
       return filter.run(connection);
@@ -947,12 +949,12 @@ function update$2(type) {
     var r = backend.r;
     var connection = backend.connection;
     var util = backend.util;
+    var q = backend.q;
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info);
 
     var collection = _backend$getTypeInfo.collection;
     var store = _backend$getTypeInfo.store;
-    var primary = _backend$getTypeInfo.primary;
     var before = _backend$getTypeInfo.before;
 
     var table = r.db(store).table(collection);
@@ -961,7 +963,7 @@ function update$2(type) {
     // main query
     var query = function query() {
       var notThis = backend.filter.notThisRecord(type, backend, args, table);
-      return backend.filter.violatesUnique(type, backend, args, notThis).branch(r.error('unique field violation'), util.update(type, args, { exists: backend.getRelatedValues(type, args) })).run(connection);
+      return backend.filter.violatesUnique(type, backend, args, notThis).branch(r.error('unique field violation'), q.type(type).update(args, { exists: backend.getRelatedValues(type, args) }).value()).run(connection);
     };
 
     // run before stub
@@ -975,10 +977,11 @@ function del$2(type) {
   var backend = this;
   return function (source, args, context, info) {
     var util = backend.util;
+    var q = backend.q;
 
     var beforeHook = _.get(before, 'delete' + type);
     var query = function query() {
-      return util.exec(util.delete(type, args));
+      return q.type(type).delete(args).run();
     };
 
     // run before stub
@@ -1150,94 +1153,308 @@ var filter = {
   notThisRecord: notThisRecord
 };
 
-/*
- * The goal of the util lib is to create modular functions that can be
- * used together to create almost any action the developer may need so
- * that custom resolve functions can be composed generically regardless
- * of the backend db/store
- */
-
-function now() {
-  return this.r.now();
-}
-
-function getTable(type) {
-  var _getTypeComputed = this.getTypeComputed(type);
-
-  var store = _getTypeComputed.store;
-  var collection = _getTypeComputed.collection;
-
-  return this.r.db(store).table(collection);
-}
-
-function exists(type, id) {
-  id = _.isObject(id) && !_.isArray(id) ? this.getPrimaryFromArgs(type, id) : id;
-  var table = getTable.call(this, type);
-  return table.get(id).eq(null);
-}
-
-function insert(type, args) {
-  var options = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
-
-  var r = this.r;
-  var table = getTable.call(this, type);
-  var throwErrors = options.throwErrors === false ? false : true;
-
-  // map the types store and collection
-  var exists = _.isArray(options.exists) ? options.exists : [];
-
-  return r.expr(exists).prepend(true).reduce(function (prev, cur) {
-    return prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null));
-  }).not().branch(throwErrors ? r.error('One or more related records were not found') : null, table.insert(this.updateArgsWithPrimary(type, args), { returnChanges: true })('changes').do(function (changes) {
-    return changes.count().eq(0).branch(throwErrors ? r.error('Failed to insert') : null, changes.nth(0)('new_val'));
-  }));
-}
-
-function update$3(type, args) {
-  var options = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
-
-  var r = this.r;
-  var table = getTable.call(this, type);
-  var throwErrors = options.throwErrors === false ? false : true;
-  var id = this.getPrimaryFromArgs(type, args);
-
-  // map the types store and collection
-  var exists = _.isArray(options.exists) ? options.exists : [];
-
-  return table.get(id).eq(null).branch(throwErrors ? r.error('The record was not found') : null, r.expr(exists).prepend(true).reduce(function (prev, cur) {
-    return prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null));
-  }).not().branch(throwErrors ? r.error('One or more related records were not found') : null, table.get(id).update(args).do(function () {
-    return table.get(id);
-  })));
-}
-
-function del$3(type, id) {
-  var options = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
-
-  id = _.isObject(id) && !_.isArray(id) ? this.getPrimaryFromArgs(type, id) : id;
-  var r = this.r;
-  var table = getTable.call(this, type);
-  var throwErrors = options.throwErrors === false ? false : true;
-  return table.get(id).eq(null).branch(throwErrors ? r.error('unable to delete, record not found') : false, table.get(id).delete()('deleted').eq(0).branch(throwErrors ? r.error('failed to delete record') : false, true));
-}
-
-function exec(expr) {
-  expr.run(this.connection);
-}
-
 function util (backend) {
-  return {
-    now: now.bind(backend),
-    insert: insert.bind(backend),
-    exists: exists.bind(backend),
-    update: update$3.bind(backend),
-    delete: del$3.bind(backend),
-    exec: exec.bind(backend)
-  };
+  return {};
+}
+
+var GraphQLFactoryBackendQueryBuilder = function () {
+  function GraphQLFactoryBackendQueryBuilder(backend, type) {
+    classCallCheck(this, GraphQLFactoryBackendQueryBuilder);
+
+    this._r = backend.r;
+    this._connection = backend.connection;
+    this._b = backend;
+    this._value = this._r;
+
+    if (type) {
+      var _backend$getTypeCompu = backend.getTypeComputed(type);
+
+      var store = _backend$getTypeCompu.store;
+      var collection = _backend$getTypeCompu.collection;
+
+      this._type = type;
+      this._storeName = store;
+      this._collectionName = collection;
+      this._store = this._r.db(this._storeName);
+      this._collection = this._store.table(this._collectionName);
+    }
+  }
+
+  createClass(GraphQLFactoryBackendQueryBuilder, [{
+    key: 'type',
+    value: function type(t) {
+      var q = new GraphQLFactoryBackendQueryBuilder(this._b, t);
+      q._value = q._collection;
+      return q;
+    }
+  }, {
+    key: 'value',
+    value: function value(v) {
+      if (v === undefined) return this._value;
+      var q = new GraphQLFactoryBackendQueryBuilder(this._b);
+      q._value = v;
+      return q;
+    }
+  }, {
+    key: 'error',
+    value: function error(msg) {
+      return this._b.r.error(msg);
+    }
+  }, {
+    key: 'run',
+    value: function run() {
+      if (this._value) return this._value.run(this._connection);
+      throw new Error('no operations to run');
+    }
+  }, {
+    key: 'add',
+    value: function add() {
+      this._value = this._value.add.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'sub',
+    value: function sub() {
+      this._value = this._value.sub.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'eq',
+    value: function eq() {
+      this._value = this._value.eq.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'ne',
+    value: function ne() {
+      this._value = this._value.ne.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'gt',
+    value: function gt() {
+      this._value = this._value.gt.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'ge',
+    value: function ge() {
+      this._value = this._value.ge.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'lt',
+    value: function lt() {
+      this._value = this._value.lt.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'le',
+    value: function le() {
+      this._value = this._value.le.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'not',
+    value: function not() {
+      this._value = this._value.not();
+      return this;
+    }
+  }, {
+    key: 'count',
+    value: function count() {
+      this._value = this._value.count();
+      return this;
+    }
+  }, {
+    key: 'now',
+    value: function now() {
+      var q = new GraphQLFactoryBackendQueryBuilder(this._b);
+      q._value = this._b.r.now();
+      return q;
+    }
+  }, {
+    key: 'get',
+    value: function get(id) {
+      id = _.isObject(id) && !_.isArray(id) ? this._b.getPrimaryFromArgs(this._type, id) : id;
+      this._value = this._collection.get(id);
+      return this;
+    }
+  }, {
+    key: 'prop',
+    value: function prop(path) {
+      path = _.isArray(path) ? path : _.toPath(path);
+      var _iteratorNormalCompletion = true;
+      var _didIteratorError = false;
+      var _iteratorError = undefined;
+
+      try {
+        for (var _iterator = path[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+          var p = _step.value;
+
+          this._value = this._value(p);
+        }
+      } catch (err) {
+        _didIteratorError = true;
+        _iteratorError = err;
+      } finally {
+        try {
+          if (!_iteratorNormalCompletion && _iterator.return) {
+            _iterator.return();
+          }
+        } finally {
+          if (_didIteratorError) {
+            throw _iteratorError;
+          }
+        }
+      }
+
+      return this;
+    }
+  }, {
+    key: 'merge',
+    value: function merge() {
+      this._value = this._value.merge.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+    }
+  }, {
+    key: 'exists',
+    value: function exists(id) {
+      id = _.isObject(id) && !_.isArray(id) ? this._b.getPrimaryFromArgs(this._type, id) : id;
+      this._value = this._collection.get(id).eq(null);
+      return this;
+    }
+  }, {
+    key: 'insert',
+    value: function insert(args) {
+      var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+
+      var r = this._r;
+      var table = this._collection;
+      var throwErrors = options.throwErrors === false ? false : true;
+
+      // map the types store and collection
+      var exists = _.isArray(options.exists) ? options.exists : [];
+
+      this._value = r.expr(exists).prepend(true).reduce(function (prev, cur) {
+        return prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null));
+      }).not().branch(throwErrors ? r.error('One or more related records were not found') : null, table.insert(this._b.updateArgsWithPrimary(this._type, args), { returnChanges: true })('changes').do(function (changes) {
+        return changes.count().eq(0).branch(throwErrors ? r.error('Failed to insert') : null, changes.nth(0)('new_val'));
+      }));
+      return this;
+    }
+  }, {
+    key: 'update',
+    value: function update(args) {
+      var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+
+      var r = this._r;
+      var table = this._collection;
+      var throwErrors = options.throwErrors === false ? false : true;
+      var id = this._b.getPrimaryFromArgs(this._type, args);
+
+      if (this._value && this._value !== this._r) {
+        this._value = this._value.update(args);
+        return this;
+      }
+
+      // map the types store and collection
+      var exists = _.isArray(options.exists) ? options.exists : [];
+
+      this._value = table.get(id).eq(null).branch(throwErrors ? r.error('The record was not found') : null, r.expr(exists).prepend(true).reduce(function (prev, cur) {
+        return prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null));
+      }).not().branch(throwErrors ? r.error('One or more related records were not found') : null, table.get(id).update(args).do(function () {
+        return table.get(id);
+      })));
+      return this;
+    }
+  }, {
+    key: 'delete',
+    value: function _delete(id) {
+      var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+
+      id = _.isObject(id) && !_.isArray(id) ? this._b.getPrimaryFromArgs(this._type, id) : id;
+      var r = this._r;
+      var table = this._collection;
+      var throwErrors = options.throwErrors === false ? false : true;
+
+      if (!id) {
+        this._value = this._value.delete();
+        return this;
+      }
+
+      this._value = table.get(id).eq(null).branch(throwErrors ? r.error('unable to delete, record not found') : false, table.get(id).delete()('deleted').eq(0).branch(throwErrors ? r.error('failed to delete record') : false, true));
+      return this;
+    }
+  }, {
+    key: 'expr',
+    value: function expr() {
+      this._value = this._r.expr.apply(this._b.r, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'coerceTo',
+    value: function coerceTo(type) {
+      this._value = this._value.coerceTo(type);
+      return this;
+    }
+  }, {
+    key: 'filter',
+    value: function filter() {
+      this._value = this._value.filter.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'do',
+    value: function _do() {
+      this._value = this._value.do.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'and',
+    value: function and() {
+      this._value = this._value.and.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'or',
+    value: function or() {
+      this._value = this._value.or.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'nth',
+    value: function nth() {
+      this._value = this._value.nth.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'branch',
+    value: function branch() {
+      this._value = this._value.branch.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'map',
+    value: function map() {
+      this._value = this._value.map.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }, {
+    key: 'reduce',
+    value: function reduce() {
+      this._value = this._value.reduce.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
+    }
+  }]);
+  return GraphQLFactoryBackendQueryBuilder;
+}();
+
+function q (backend) {
+  return new GraphQLFactoryBackendQueryBuilder(backend);
 }
 
 // rethinkdb specific modules
-var crud$2 = { create: create$2, read: read$2, update: update$2, delete: del$2, initStore: initStore, filter: filter, util: util };
+var crud$2 = { create: create$2, read: read$2, update: update$2, delete: del$2, initStore: initStore, filter: filter, util: util, q: q };
 
 // extended backend class for RethinkDB
 var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
