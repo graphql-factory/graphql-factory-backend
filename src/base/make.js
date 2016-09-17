@@ -119,6 +119,7 @@ export function makeRelations () {
 }
 
 export function make () {
+
   // analyze each type and construct graphql schemas
   _.forEach(this._types, (definition, tname) => {
 

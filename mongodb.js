@@ -398,7 +398,11 @@ var GraphQLFactoryBaseBackend = function () {
 
     // check the config object
     this._plugin = _.isArray(_plugin) ? _plugin : [_plugin];
-    this._types = config.types;
+    this._types = _.get(config, 'types', {});
+    this._functions = _.get(config, 'functions', {});
+    this._globals = _.get(config, 'globals', {});
+    this._fields = _.get(config, 'fields', {});
+    this._externalTypes = _.get(config, 'externalTypes', {});
 
     // set mandatory properties
     this.options = _.get(config, 'options', {});
@@ -412,12 +416,12 @@ var GraphQLFactoryBaseBackend = function () {
 
     // factory properties
     this._definition = {
-      globals: defineProperty({}, namespace, { config: config }),
+      globals: _.merge(this._globals, defineProperty({}, namespace, { config: config })),
       types: {},
       schemas: {},
-      fields: {},
-      functions: {},
-      externalTypes: {}
+      fields: this._fields,
+      functions: this._functions,
+      externalTypes: this._externalTypes
     };
 
     // make graphql-factory definitions
@@ -431,10 +435,39 @@ var GraphQLFactoryBaseBackend = function () {
     });
   }
 
-  // returns a graphql-factory plugin
-
-
   createClass(GraphQLFactoryBaseBackend, [{
+    key: 'addFunction',
+    value: function addFunction(fn, name) {
+      if (_.isString(name) && _.isFunction(fn)) _.set(this._definition.functions, name, fn(this));
+    }
+  }, {
+    key: 'addFunctions',
+    value: function addFunctions(functions) {
+      var _this2 = this;
+
+      _.forEach(functions, function (fn, name) {
+        return _this2.addFunction(fn, name);
+      });
+    }
+  }, {
+    key: 'addGlobal',
+    value: function addGlobal(obj, path) {
+      if (_.isString(path) && obj) _.set(this._definition.globals, path, obj);
+    }
+  }, {
+    key: 'addField',
+    value: function addField(def, name) {
+      if (_.isString(name) && _.isObject(def)) _.set(this._definition.fields, name, def);
+    }
+  }, {
+    key: 'addExternalType',
+    value: function addExternalType(type, name) {
+      if (_.isString(name) && _.isObject(type)) _.set(this._definition.externalTypes, name, type);
+    }
+
+    // returns a graphql-factory plugin
+
+  }, {
     key: 'getPrimary',
 
 
@@ -544,7 +577,7 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'getRelatedValues',
     value: function getRelatedValues(type, args) {
-      var _this2 = this;
+      var _this3 = this;
 
       var values = [];
 
@@ -559,7 +592,7 @@ var GraphQLFactoryBaseBackend = function () {
         var fieldType = _.get(fieldDef, 'type', fieldDef);
         var isList = _.isArray(fieldType);
         var typeName = isList && fieldType.length === 1 ? fieldType[0] : fieldType;
-        var typeDef = _.get(_this2._types, typeName, {});
+        var typeDef = _.get(_this3._types, typeName, {});
         var computed = _.get(typeDef, '_backend.computed');
         if (computed && related) {
           (function () {
@@ -661,7 +694,7 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'initAllStores',
     value: function initAllStores(rebuild, seedData) {
-      var _this3 = this;
+      var _this4 = this;
 
       if (!_.isBoolean(rebuild)) {
         seedData = _.isObject(rebuild) ? rebuild : {};
@@ -670,14 +703,14 @@ var GraphQLFactoryBaseBackend = function () {
 
       // only init definitions with a collection and store specified
       var canInit = function canInit() {
-        return _.pickBy(_this3._types, function (t) {
+        return _.pickBy(_this4._types, function (t) {
           return _.has(t, '_backend.computed.collection') && _.has(t, '_backend.computed.store');
         });
       };
 
       var ops = _.map(canInit(), function (t, type) {
         var data = _.get(seedData, type, []);
-        return _this3.initStore(type, rebuild, _.isArray(data) ? data : []);
+        return _this4.initStore(type, rebuild, _.isArray(data) ? data : []);
       });
 
       return promiseMap(ops);

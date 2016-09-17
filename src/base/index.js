@@ -39,7 +39,11 @@ export default class GraphQLFactoryBaseBackend {
 
     // check the config object
     this._plugin = _.isArray(_plugin) ? _plugin : [_plugin]
-    this._types = config.types
+    this._types = _.get(config, 'types', {})
+    this._functions = _.get(config, 'functions', {})
+    this._globals = _.get(config, 'globals', {})
+    this._fields = _.get(config, 'fields', {})
+    this._externalTypes = _.get(config, 'externalTypes', {})
 
     // set mandatory properties
     this.options = _.get(config, 'options', {})
@@ -53,12 +57,12 @@ export default class GraphQLFactoryBaseBackend {
 
     // factory properties
     this._definition = {
-      globals: { [namespace]: { config } },
+      globals: _.merge(this._globals, {[namespace]: {config}}),
       types: {},
       schemas: {},
-      fields: {},
-      functions: {},
-      externalTypes: {}
+      fields: this._fields,
+      functions: this._functions,
+      externalTypes: this._externalTypes
     }
 
     // make graphql-factory definitions
@@ -68,6 +72,26 @@ export default class GraphQLFactoryBaseBackend {
     _.forEach(config.methods, (method, name) => {
       if (!_.has(this, name) && _.isFunction(method)) this[name] = () => method.apply(this, arguments)
     })
+  }
+
+  addFunction (fn, name) {
+    if (_.isString(name) && _.isFunction(fn)) _.set(this._definition.functions, name, fn(this))
+  }
+
+  addFunctions (functions) {
+    _.forEach(functions, (fn, name) => this.addFunction(fn, name))
+  }
+
+  addGlobal (obj, path) {
+    if (_.isString(path) && obj) _.set(this._definition.globals, path, obj)
+  }
+
+  addField (def, name) {
+    if (_.isString(name) && _.isObject(def)) _.set(this._definition.fields, name, def)
+  }
+
+  addExternalType (type, name) {
+    if (_.isString(name) && _.isObject(type)) _.set(this._definition.externalTypes, name, type)
   }
 
   // returns a graphql-factory plugin
