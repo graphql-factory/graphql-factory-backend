@@ -365,8 +365,7 @@ var possibleConstructorReturn = function (self, call) {
 
 var GraphQLFactoryBaseBackend = function () {
   function GraphQLFactoryBaseBackend(namespace, graphql, factory) {
-    var _this = this,
-        _arguments = arguments;
+    var _this = this;
 
     var config = arguments.length <= 3 || arguments[3] === undefined ? {} : arguments[3];
     var crud = arguments.length <= 4 || arguments[4] === undefined ? {} : arguments[4];
@@ -410,6 +409,7 @@ var GraphQLFactoryBaseBackend = function () {
     this.namespace = namespace;
     this.graphql = graphql;
     this.factory = factory(this.graphql);
+    this.queries = {};
     this.defaultStore = this.options.store || this.defaultStore || 'test';
 
     // tools
@@ -430,13 +430,25 @@ var GraphQLFactoryBaseBackend = function () {
 
     // add methods if they do not conflict with existing properties
     _.forEach(config.methods, function (method, name) {
-      if (!_.has(_this, name) && _.isFunction(method)) _this[name] = function () {
-        return method.apply(_this, _arguments);
-      };
+      if (!_.has(_this, name) && _.isFunction(method)) _this[name] = method.bind(_this);
     });
   }
 
   createClass(GraphQLFactoryBaseBackend, [{
+    key: 'addQuery',
+    value: function addQuery(fn, name) {
+      if (_.isString(name) && _.isFunction(fn)) _.set(this.queries, name, fn.bind(this));
+    }
+  }, {
+    key: 'addQueries',
+    value: function addQueries(queries) {
+      var _this2 = this;
+
+      _.forEach(queries, function (fn, name) {
+        return _this2.addQuery(fn, name);
+      });
+    }
+  }, {
     key: 'addFunction',
     value: function addFunction(fn, name) {
       if (_.isString(name) && _.isFunction(fn)) _.set(this._definition.functions, name, fn(this));
@@ -444,10 +456,10 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'addFunctions',
     value: function addFunctions(functions) {
-      var _this2 = this;
+      var _this3 = this;
 
       _.forEach(functions, function (fn, name) {
-        return _this2.addFunction(fn, name);
+        return _this3.addFunction(fn, name);
       });
     }
   }, {
@@ -578,7 +590,7 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'getRelatedValues',
     value: function getRelatedValues(type, args) {
-      var _this3 = this;
+      var _this4 = this;
 
       var values = [];
 
@@ -593,7 +605,7 @@ var GraphQLFactoryBaseBackend = function () {
         var fieldType = _.get(fieldDef, 'type', fieldDef);
         var isList = _.isArray(fieldType);
         var typeName = isList && fieldType.length === 1 ? fieldType[0] : fieldType;
-        var typeDef = _.get(_this3._types, typeName, {});
+        var typeDef = _.get(_this4._types, typeName, {});
         var computed = _.get(typeDef, '_backend.computed');
         if (computed && related) {
           (function () {
@@ -695,7 +707,7 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'initAllStores',
     value: function initAllStores(rebuild, seedData) {
-      var _this4 = this;
+      var _this5 = this;
 
       if (!_.isBoolean(rebuild)) {
         seedData = _.isObject(rebuild) ? rebuild : {};
@@ -704,14 +716,14 @@ var GraphQLFactoryBaseBackend = function () {
 
       // only init definitions with a collection and store specified
       var canInit = function canInit() {
-        return _.pickBy(_this4._types, function (t) {
+        return _.pickBy(_this5._types, function (t) {
           return _.has(t, '_backend.computed.collection') && _.has(t, '_backend.computed.store');
         });
       };
 
       var ops = _.map(canInit(), function (t, type) {
         var data = _.get(seedData, type, []);
-        return _this4.initStore(type, rebuild, _.isArray(data) ? data : []);
+        return _this5.initStore(type, rebuild, _.isArray(data) ? data : []);
       });
 
       return promiseMap(ops);

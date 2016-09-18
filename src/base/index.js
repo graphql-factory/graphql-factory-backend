@@ -51,6 +51,7 @@ export default class GraphQLFactoryBaseBackend {
     this.namespace = namespace
     this.graphql = graphql
     this.factory = factory(this.graphql)
+    this.queries = {}
     this.defaultStore = this.options.store || this.defaultStore || 'test'
 
     // tools
@@ -71,8 +72,16 @@ export default class GraphQLFactoryBaseBackend {
 
     // add methods if they do not conflict with existing properties
     _.forEach(config.methods, (method, name) => {
-      if (!_.has(this, name) && _.isFunction(method)) this[name] = () => method.apply(this, arguments)
+      if (!_.has(this, name) && _.isFunction(method)) this[name] = method.bind(this)
     })
+  }
+
+  addQuery (fn, name) {
+    if (_.isString(name) && _.isFunction(fn)) _.set(this.queries, name, fn.bind(this))
+  }
+
+  addQueries (queries) {
+    _.forEach(queries, (fn, name) => this.addQuery(fn, name))
   }
 
   addFunction (fn, name) {

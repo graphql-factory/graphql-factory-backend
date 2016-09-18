@@ -6,7 +6,8 @@ export default function read (type) {
     let { r, connection, util } = backend
     let { collection, store, before } = backend.getTypeInfo(type, info)
     let table = r.db(store).table(collection)
-    let { filter, many } = backend.filter.getRelationFilter (type, backend, source, info, table)
+
+    let { filter, many } = backend.filter.getRelationFilter(type, backend, source, info, table)
     let beforeHook = _.get(before, `read${type}`)
 
     // main query

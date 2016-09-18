@@ -10,6 +10,7 @@ export function getCollectionFilter (type, backend) {
 export function getRelationFilter (type, backend, source, info, filter) {
   filter = filter || getCollectionFilter(type, backend)
   let many = true
+  let { r } = backend
   let { fields, nested, currentPath, belongsTo, has } = backend.getTypeInfo(type, info)
 
   // check for nested with belongsTo relationship
@@ -22,7 +23,7 @@ export function getRelationFilter (type, backend, source, info, filter) {
     // get the source id or ids
     let hasId = _.get(source, currentPath)
     hasId = !many && _.isArray(hasId) ? _.get(hasId, '[0]') : hasId
-    if (!hasId || (_.isArray(hasId) && !hasId.length)) return many ? [] : null
+    if (!hasId || (_.isArray(hasId) && !hasId.length)) return { filter: r.expr([]), many }
 
     // do an array or field search
     if (many) filter = filter.filter((obj) => r.expr(hasId).contains(obj(has.foreign)))
