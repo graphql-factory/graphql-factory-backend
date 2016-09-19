@@ -80,7 +80,7 @@ export function violatesUnique (type, backend, args, filter) {
 // get records that are not this one from a previous filter
 export function notThisRecord (type, backend, args, filter) {
   filter = filter || getCollectionFilter(type, backend)
-  let { primaryKey } = backend.getTypeBackend(type)
+  let { primaryKey } = backend.getTypeComputed(type)
   let id = backend.getPrimaryFromArgs(type, args)
   return filter.filter((obj) => obj(primaryKey).ne(id))
 }

@@ -39,6 +39,11 @@ export class GraphQLFactoryBackendQueryBuilder {
     throw new Error('no operations to run')
   }
 
+  forEach () {
+    this._value = this._value.forEach.apply(this._value, [...arguments])
+    return this
+  }
+
   add () {
     this._value = this._value.add.apply(this._value, [...arguments])
     return this
@@ -149,23 +154,20 @@ export class GraphQLFactoryBackendQueryBuilder {
     let throwErrors = options.throwErrors === false ? false : true
     let id = this._b.getPrimaryFromArgs(this._type, args)
 
-    if (this._value && this._value !== this._r) {
-      this._value = this._value.update(args)
-      return this
-    }
-
     // map the types store and collection
     let exists = _.isArray(options.exists) ?  options.exists : []
 
-    this._value = table.get(id).eq(null).branch(
+    let filter = id ? table.get(id) : this._value
+    let not = id ? filter.eq(null) : r.expr(false)
+
+    this._value = not.branch(
       throwErrors ? r.error('The record was not found') : null,
       r.expr(exists).prepend(true)
         .reduce((prev, cur) => prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null)))
         .not()
         .branch(
           throwErrors ? r.error('One or more related records were not found') : null,
-          table.get(id).update(args)
-            .do(() => table.get(id))
+          filter.update(args)
         )
     )
     return this

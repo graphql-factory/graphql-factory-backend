@@ -645,7 +645,8 @@ var GraphQLFactoryBaseBackend = function () {
 
       var primary = _getTypeComputed.primary;
 
-      var pk = _.map(primary, function (k) {
+      if (!primary) throw 'Unable to obtain primary';
+      var pk = _.map(_.isArray(primary) ? primary : [primary], function (k) {
         return _.get(args, k);
       });
       return pk.length === 1 ? pk[0] : pk;

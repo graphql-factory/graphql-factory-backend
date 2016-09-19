@@ -235,7 +235,8 @@ export default class GraphQLFactoryBaseBackend {
   // get primary args as a single value
   getPrimaryFromArgs (type, args) {
     let { primary } = this.getTypeComputed(type)
-    let pk = _.map(primary, (k) => _.get(args, k))
+    if (!primary) throw 'Unable to obtain primary'
+    let pk = _.map(_.isArray(primary) ? primary : [primary], (k) => _.get(args, k))
     return pk.length === 1 ? pk[0] : pk
   }
 

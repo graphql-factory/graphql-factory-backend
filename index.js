@@ -677,7 +677,8 @@ var GraphQLFactoryBaseBackend = function () {
 
       var primary = _getTypeComputed.primary;
 
-      var pk = _.map(primary, function (k) {
+      if (!primary) throw 'Unable to obtain primary';
+      var pk = _.map(_.isArray(primary) ? primary : [primary], function (k) {
         return _.get(args, k);
       });
       return pk.length === 1 ? pk[0] : pk;
@@ -976,12 +977,15 @@ function update$2(type) {
     var before = _backend$getTypeInfo.before;
 
     var table = r.db(store).table(collection);
+    var id = backend.getPrimaryFromArgs(type, args);
     var beforeHook = _.get(before, 'update' + type);
 
     // main query
     var query = function query() {
       var notThis = backend.filter.notThisRecord(type, backend, args, table);
-      return backend.filter.violatesUnique(type, backend, args, notThis).branch(r.error('unique field violation'), q.type(type).update(args, { exists: backend.getRelatedValues(type, args) }).value()).run(connection);
+      return backend.filter.violatesUnique(type, backend, args, notThis).branch(r.error('unique field violation'), q.type(type).update(args, { exists: backend.getRelatedValues(type, args) }).do(function () {
+        return q.type(type).get(id).value();
+      }).value()).run(connection);
     };
 
     // run before stub
@@ -998,6 +1002,10 @@ function del$2(type) {
     var info = arguments[3];
     var util = backend.util;
     var q = backend.q;
+
+    var _backend$getTypeInfo = backend.getTypeInfo(type, info);
+
+    var before = _backend$getTypeInfo.before;
 
     var beforeHook = _.get(before, 'delete' + type);
     var query = function query() {
@@ -1156,9 +1164,9 @@ function violatesUnique(type, backend, args, filter) {
 function notThisRecord(type, backend, args, filter) {
   filter = filter || getCollectionFilter(type, backend);
 
-  var _backend$getTypeBacke2 = backend.getTypeBackend(type);
+  var _backend$getTypeCompu2 = backend.getTypeComputed(type);
 
-  var primaryKey = _backend$getTypeBacke2.primaryKey;
+  var primaryKey = _backend$getTypeCompu2.primaryKey;
 
   var id = backend.getPrimaryFromArgs(type, args);
   return filter.filter(function (obj) {
@@ -1226,6 +1234,12 @@ var GraphQLFactoryBackendQueryBuilder = function () {
     value: function run() {
       if (this._value) return this._value.run(this._connection);
       throw new Error('no operations to run');
+    }
+  }, {
+    key: 'forEach',
+    value: function forEach() {
+      this._value = this._value.forEach.apply(this._value, [].concat(Array.prototype.slice.call(arguments)));
+      return this;
     }
   }, {
     key: 'add',
@@ -1373,19 +1387,15 @@ var GraphQLFactoryBackendQueryBuilder = function () {
       var throwErrors = options.throwErrors === false ? false : true;
       var id = this._b.getPrimaryFromArgs(this._type, args);
 
-      if (this._value && this._value !== this._r) {
-        this._value = this._value.update(args);
-        return this;
-      }
-
       // map the types store and collection
       var exists = _.isArray(options.exists) ? options.exists : [];
 
-      this._value = table.get(id).eq(null).branch(throwErrors ? r.error('The record was not found') : null, r.expr(exists).prepend(true).reduce(function (prev, cur) {
+      var filter = id ? table.get(id) : this._value;
+      var not = id ? filter.eq(null) : r.expr(false);
+
+      this._value = not.branch(throwErrors ? r.error('The record was not found') : null, r.expr(exists).prepend(true).reduce(function (prev, cur) {
         return prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null));
-      }).not().branch(throwErrors ? r.error('One or more related records were not found') : null, table.get(id).update(args).do(function () {
-        return table.get(id);
-      })));
+      }).not().branch(throwErrors ? r.error('One or more related records were not found') : null, filter.update(args)));
       return this;
     }
   }, {

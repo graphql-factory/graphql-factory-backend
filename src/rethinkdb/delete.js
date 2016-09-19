@@ -4,6 +4,7 @@ export default function del (type) {
   let backend = this
   return function (source, args, context = {}, info) {
     let { util, q } = backend
+    let { before } = backend.getTypeInfo(type, info)
     let beforeHook = _.get(before, `delete${type}`)
     let query = () => q.type(type).delete(args).run()
 

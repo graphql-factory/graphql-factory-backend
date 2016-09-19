@@ -7,6 +7,7 @@ export default function update (type) {
     let { r, connection, util, q } = backend
     let { collection, store, before } = backend.getTypeInfo(type, info)
     let table = r.db(store).table(collection)
+    let id = backend.getPrimaryFromArgs(type, args)
     let beforeHook = _.get(before, `update${type}`)
 
     // main query
@@ -17,6 +18,7 @@ export default function update (type) {
           r.error('unique field violation'),
           q.type(type)
             .update(args, { exists: backend.getRelatedValues(type, args) })
+            .do(() => q.type(type).get(id).value())
             .value()
         )
         .run(connection)
