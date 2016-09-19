@@ -775,7 +775,9 @@ var GraphQLFactoryBaseBackend = function () {
 
 function create(type) {
   var backend = this;
-  return function (source, args, context, info) {
+  return function (source, args) {
+    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var info = arguments[3];
     var r = backend.r;
     var connection = backend.connection;
     var util = backend.util;
@@ -799,7 +801,7 @@ function create(type) {
     };
 
     // run before stub
-    var resolveBefore = beforeHook.call({ factory: this, backend: backend }, source, args, context, info);
+    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
     if (util.isPromise(resolveBefore)) return resolveBefore.then(query);
     return query();
   };
@@ -807,7 +809,9 @@ function create(type) {
 
 function read(type) {
   var backend = this;
-  return function (source, args, context, info) {
+  return function (source, args) {
+    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var info = arguments[3];
     var r = backend.r;
     var connection = backend.connection;
     var util = backend.util;
@@ -847,7 +851,7 @@ function read(type) {
     };
 
     // run before stub
-    var resolveBefore = beforeHook.call({ factory: this, backend: backend }, source, args, context, info);
+    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
     if (util.isPromise(resolveBefore)) return resolveBefore.then(query);
     return query();
   };
@@ -855,7 +859,9 @@ function read(type) {
 
 function update(type) {
   var backend = this;
-  return function (source, args, context, info) {
+  return function (source, args) {
+    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var info = arguments[3];
     var r = backend.r;
     var connection = backend.connection;
     var util = backend.util;
@@ -877,7 +883,7 @@ function update(type) {
     };
 
     // run before stub
-    var resolveBefore = beforeHook.call({ factory: this, backend: backend }, source, args, context, info);
+    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
     if (util.isPromise(resolveBefore)) return resolveBefore.then(query);
     return query();
   };
@@ -885,7 +891,9 @@ function update(type) {
 
 function del(type) {
   var backend = this;
-  return function (source, args, context, info) {
+  return function (source, args) {
+    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var info = arguments[3];
     var util = backend.util;
     var q = backend.q;
 
@@ -895,7 +903,7 @@ function del(type) {
     };
 
     // run before stub
-    var resolveBefore = beforeHook.call({ factory: this, backend: backend }, source, args, context, info);
+    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
     if (util.isPromise(resolveBefore)) return resolveBefore.then(query);
     return query();
   };

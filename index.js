@@ -877,7 +877,9 @@ function mongodb (namespace, graphql, factory, db, config, connection) {
 
 function create$2(type) {
   var backend = this;
-  return function (source, args, context, info) {
+  return function (source, args) {
+    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var info = arguments[3];
     var r = backend.r;
     var connection = backend.connection;
     var util = backend.util;
@@ -901,7 +903,7 @@ function create$2(type) {
     };
 
     // run before stub
-    var resolveBefore = beforeHook.call({ factory: this, backend: backend }, source, args, context, info);
+    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
     if (util.isPromise(resolveBefore)) return resolveBefore.then(query);
     return query();
   };
@@ -909,7 +911,9 @@ function create$2(type) {
 
 function read$2(type) {
   var backend = this;
-  return function (source, args, context, info) {
+  return function (source, args) {
+    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var info = arguments[3];
     var r = backend.r;
     var connection = backend.connection;
     var util = backend.util;
@@ -949,7 +953,7 @@ function read$2(type) {
     };
 
     // run before stub
-    var resolveBefore = beforeHook.call({ factory: this, backend: backend }, source, args, context, info);
+    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
     if (util.isPromise(resolveBefore)) return resolveBefore.then(query);
     return query();
   };
@@ -957,7 +961,9 @@ function read$2(type) {
 
 function update$2(type) {
   var backend = this;
-  return function (source, args, context, info) {
+  return function (source, args) {
+    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var info = arguments[3];
     var r = backend.r;
     var connection = backend.connection;
     var util = backend.util;
@@ -979,7 +985,7 @@ function update$2(type) {
     };
 
     // run before stub
-    var resolveBefore = beforeHook.call({ factory: this, backend: backend }, source, args, context, info);
+    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
     if (util.isPromise(resolveBefore)) return resolveBefore.then(query);
     return query();
   };
@@ -987,7 +993,9 @@ function update$2(type) {
 
 function del$2(type) {
   var backend = this;
-  return function (source, args, context, info) {
+  return function (source, args) {
+    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var info = arguments[3];
     var util = backend.util;
     var q = backend.q;
 
@@ -997,7 +1005,7 @@ function del$2(type) {
     };
 
     // run before stub
-    var resolveBefore = beforeHook.call({ factory: this, backend: backend }, source, args, context, info);
+    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
     if (util.isPromise(resolveBefore)) return resolveBefore.then(query);
     return query();
   };

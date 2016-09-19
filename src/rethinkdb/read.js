@@ -2,7 +2,7 @@ import _ from 'lodash'
 
 export default function read (type) {
   let backend = this
-  return function (source, args, context, info) {
+  return function (source, args, context = {}, info) {
     let { r, connection, util } = backend
     let { collection, store, before } = backend.getTypeInfo(type, info)
     let table = r.db(store).table(collection)
@@ -30,7 +30,7 @@ export default function read (type) {
     }
 
     // run before stub
-    let resolveBefore = beforeHook.call({ factory: this, backend }, source, args, context, info)
+    let resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info)
     if (util.isPromise(resolveBefore)) return resolveBefore.then(query)
     return query()
   }
