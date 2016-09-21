@@ -8,7 +8,7 @@ import del from './delete'
 let crud = { create, read, update, delete: del }
 
 // extended backend class for RethinkDB
-class GraphQLFactoryKnexBackend extends GraphQLFactoryBaseBackend {
+export class GraphQLFactoryKnexBackend extends GraphQLFactoryBaseBackend {
   constructor (namespace, graphql, factory, knex, config) {
     super(namespace, graphql, factory, config, crud)
     this.type = 'GraphQLFactoryKnexBackend'

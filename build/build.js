@@ -25,11 +25,11 @@ function babelPath (build) {
 }
 
 let builds = [
-  { entry: 'src/base/index.js', dest: 'base.js' },
-  { entry: 'src/rethinkdb/index.js', dest: 'rethinkdb.js' },
-  { entry: 'src/knex/index.js', dest: 'knex.js' },
-  { entry: 'src/mongodb/index.js', dest: 'mongodb.js' },
-  { entry: 'src/index.js', dest: 'index.js' },
+  // { entry: 'src/base/index.js', dest: 'base.js' },
+  // { entry: 'src/rethinkdb/index.js', dest: 'rethinkdb.js' },
+  // { entry: 'src/knex/index.js', dest: 'knex.js' },
+  // { entry: 'src/mongodb/index.js', dest: 'mongodb.js' },
+  { entry: 'src/index.js', dest: 'index.js' }
 ]
 
 // copy all babelrc files first

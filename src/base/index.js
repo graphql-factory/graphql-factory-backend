@@ -11,7 +11,7 @@ import { promiseMap, isPromise } from './common'
  */
 
 // base class for factory backend, all backends should extend this class
-export default class GraphQLFactoryBaseBackend {
+export class GraphQLFactoryBaseBackend {
   constructor (namespace, graphql, factory, config = {}, crud = {}) {
     this.type = 'GraphQLFactoryBaseBackend'
 
@@ -283,4 +283,8 @@ export default class GraphQLFactoryBaseBackend {
     if (!this._lib) this._lib = this.factory.make(this.plugin)
     return this._lib
   }
+}
+
+export default function (namespace, graphql, factory, config = {}, crud = {}) {
+  return new GraphQLFactoryBaseBackend(namespace, graphql, factory, config, crud)
 }

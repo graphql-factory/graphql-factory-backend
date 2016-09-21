@@ -370,7 +370,6 @@ var possibleConstructorReturn = function (self, call) {
  */
 
 // base class for factory backend, all backends should extend this class
-
 var GraphQLFactoryBaseBackend = function () {
   function GraphQLFactoryBaseBackend(namespace, graphql, factory) {
     var _this = this;
@@ -774,6 +773,13 @@ var GraphQLFactoryBaseBackend = function () {
   return GraphQLFactoryBaseBackend;
 }();
 
+function GraphQLFactoryBaseBackend$1 (namespace, graphql, factory) {
+  var config = arguments.length <= 3 || arguments[3] === undefined ? {} : arguments[3];
+  var crud = arguments.length <= 4 || arguments[4] === undefined ? {} : arguments[4];
+
+  return new GraphQLFactoryBaseBackend(namespace, graphql, factory, config, crud);
+}
+
 function create() {
   return function () {};
 }
@@ -793,7 +799,6 @@ function del() {
 var crud = { create: create, read: read, update: update, delete: del };
 
 // extended backend class for RethinkDB
-
 var GraphQLFactoryKnexBackend = function (_GraphQLFactoryBaseBa) {
   inherits(GraphQLFactoryKnexBackend, _GraphQLFactoryBaseBa);
 
@@ -816,11 +821,9 @@ var GraphQLFactoryKnexBackend = function (_GraphQLFactoryBaseBa) {
   }
 
   return GraphQLFactoryKnexBackend;
-}(GraphQLFactoryBaseBackend);
+}(GraphQLFactoryBaseBackend$1);
 
 // helper function to instantiate a new backend
-
-
 function knex (namespace, graphql, factory, knex, config) {
   return new GraphQLFactoryKnexBackend(namespace, graphql, factory, knex, config);
 }
@@ -844,7 +847,6 @@ function del$1() {
 var crud$1 = { create: create$1, read: read$1, update: update$1, delete: del$1 };
 
 // extended backend class for RethinkDB
-
 var GraphQLFactoryMongoDBBackend = function (_GraphQLFactoryBaseBa) {
   inherits(GraphQLFactoryMongoDBBackend, _GraphQLFactoryBaseBa);
 
@@ -867,11 +869,9 @@ var GraphQLFactoryMongoDBBackend = function (_GraphQLFactoryBaseBa) {
   }
 
   return GraphQLFactoryMongoDBBackend;
-}(GraphQLFactoryBaseBackend);
+}(GraphQLFactoryBaseBackend$1);
 
 // helper function to instantiate a new backend
-
-
 function mongodb (namespace, graphql, factory, db, config, connection) {
   return new GraphQLFactoryMongoDBBackend(namespace, graphql, factory, db, config, connection);
 }
@@ -1512,7 +1512,7 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
   }
 
   return GraphQLFactoryRethinkDBBackend;
-}(GraphQLFactoryBaseBackend);
+}(GraphQLFactoryBaseBackend$1);
 
 // helper function to instantiate a new backend
 function rethinkdb (namespace, graphql, factory, r, config, connection) {
@@ -1520,14 +1520,22 @@ function rethinkdb (namespace, graphql, factory, r, config, connection) {
 }
 
 var index = {
-  base: GraphQLFactoryBaseBackend,
+  base: GraphQLFactoryBaseBackend$1,
+  GraphQLFactoryBaseBackend: GraphQLFactoryBaseBackend,
   knex: knex,
+  GraphQLFactoryKnexBackend: GraphQLFactoryKnexBackend,
   mongodb: mongodb,
-  rethinkdb: rethinkdb
+  GraphQLFactoryMongoDBBackend: GraphQLFactoryMongoDBBackend,
+  rethinkdb: rethinkdb,
+  GraphQLFactoryRethinkDBBackend: GraphQLFactoryRethinkDBBackend
 };
 
-exports.base = GraphQLFactoryBaseBackend;
+exports.base = GraphQLFactoryBaseBackend$1;
+exports.GraphQLFactoryBaseBackend = GraphQLFactoryBaseBackend;
 exports.knex = knex;
+exports.GraphQLFactoryKnexBackend = GraphQLFactoryKnexBackend;
 exports.mongodb = mongodb;
+exports.GraphQLFactoryMongoDBBackend = GraphQLFactoryMongoDBBackend;
 exports.rethinkdb = rethinkdb;
+exports.GraphQLFactoryRethinkDBBackend = GraphQLFactoryRethinkDBBackend;
 exports['default'] = index;
