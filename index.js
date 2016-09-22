@@ -1518,6 +1518,26 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
     return _this;
   }
 
+  createClass(GraphQLFactoryRethinkDBBackend, [{
+    key: 'getTypeStore',
+    value: function getTypeStore(type) {
+      var _getTypeComputed = this.getTypeComputed(type);
+
+      var store = _getTypeComputed.store;
+
+      return this.r.db(store);
+    }
+  }, {
+    key: 'getTypeCollection',
+    value: function getTypeCollection(type) {
+      var _getTypeComputed2 = this.getTypeComputed(type);
+
+      var store = _getTypeComputed2.store;
+      var collection = _getTypeComputed2.collection;
+
+      return this.r.db(store).table(collection);
+    }
+  }]);
   return GraphQLFactoryRethinkDBBackend;
 }(GraphQLFactoryBaseBackend$1);
 

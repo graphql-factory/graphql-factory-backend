@@ -29,6 +29,16 @@ export class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBackend {
     // add values to the globals namespace
     _.merge(this._definition.globals, { [namespace]: { r, connection } })
   }
+
+  getTypeStore (type) {
+    let { store } = this.getTypeComputed(type)
+    return this.r.db(store)
+  }
+
+  getTypeCollection (type) {
+    let { store, collection } = this.getTypeComputed(type)
+    return this.r.db(store).table(collection)
+  }
 }
 
 // helper function to instantiate a new backend
