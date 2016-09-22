@@ -45,6 +45,7 @@ export class GraphQLFactoryBaseBackend {
     this._globals = _.get(config, 'globals', {})
     this._fields = _.get(config, 'fields', {})
     this._externalTypes = _.get(config, 'externalTypes', {})
+    this._installData = {}
 
     // set mandatory properties
     this.options = _.get(config, 'options', {})
@@ -74,6 +75,11 @@ export class GraphQLFactoryBaseBackend {
     _.forEach(config.methods, (method, name) => {
       if (!_.has(this, name) && _.isFunction(method)) this[name] = method.bind(this)
     })
+  }
+
+  addInstallData (data) {
+    if (!_.isObject(data)) return
+    this._installData = _.merge({}, this._installData, data)
   }
 
   addQuery (fn, name) {

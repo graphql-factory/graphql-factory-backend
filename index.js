@@ -410,6 +410,7 @@ var GraphQLFactoryBaseBackend = function () {
     this._globals = _.get(config, 'globals', {});
     this._fields = _.get(config, 'fields', {});
     this._externalTypes = _.get(config, 'externalTypes', {});
+    this._installData = {};
 
     // set mandatory properties
     this.options = _.get(config, 'options', {});
@@ -442,6 +443,12 @@ var GraphQLFactoryBaseBackend = function () {
   }
 
   createClass(GraphQLFactoryBaseBackend, [{
+    key: 'addInstallData',
+    value: function addInstallData(data) {
+      if (!_.isObject(data)) return;
+      this._installData = _.merge({}, this._installData, data);
+    }
+  }, {
     key: 'addQuery',
     value: function addQuery(fn, name) {
       if (_.isString(name) && _.isFunction(fn)) _.set(this.queries, name, fn.bind(this));
