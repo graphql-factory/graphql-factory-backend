@@ -26,18 +26,18 @@ export class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBackend {
     this.connection = connection
     this.defaultStore = 'test'
 
+    this.getTypeStore = (type) => {
+      let { store } = this.getTypeComputed(type)
+      return this.r.db(store)
+    }
+
+    this.getTypeCollection = (type) => {
+      let { store, collection } = this.getTypeComputed(type)
+      return this.r.db(store).table(collection)
+    }
+
     // add values to the globals namespace
     _.merge(this._definition.globals, { [namespace]: { r, connection } })
-  }
-
-  getTypeStore (type) {
-    let { store } = this.getTypeComputed(type)
-    return this.r.db(store)
-  }
-
-  getTypeCollection (type) {
-    let { store, collection } = this.getTypeComputed(type)
-    return this.r.db(store).table(collection)
   }
 }
 
