@@ -232,7 +232,7 @@ function make() {
         var mutationFieldName = _.includes(['create', 'update', 'delete'], mname) ? '' + mname + tname : mname;
 
         _.set(_this3._definition.types, mutationName + '.fields.' + mutationFieldName, {
-          type: m.type || mname === 'delete' ? 'Boolean' : tname,
+          type: mname === 'delete' && !m.type ? 'Boolean' : m.type || tname,
           args: m.args || getArgs.call(_this3, 'mutation', definition, m, mname),
           resolve: '' + mutationFieldName
         });
@@ -296,8 +296,121 @@ function promiseMap(list) {
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) {
   return typeof obj;
 } : function (obj) {
-  return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj;
+  return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj;
 };
+
+var asyncGenerator = function () {
+  function AwaitValue(value) {
+    this.value = value;
+  }
+
+  function AsyncGenerator(gen) {
+    var front, back;
+
+    function send(key, arg) {
+      return new Promise(function (resolve, reject) {
+        var request = {
+          key: key,
+          arg: arg,
+          resolve: resolve,
+          reject: reject,
+          next: null
+        };
+
+        if (back) {
+          back = back.next = request;
+        } else {
+          front = back = request;
+          resume(key, arg);
+        }
+      });
+    }
+
+    function resume(key, arg) {
+      try {
+        var result = gen[key](arg);
+        var value = result.value;
+
+        if (value instanceof AwaitValue) {
+          Promise.resolve(value.value).then(function (arg) {
+            resume("next", arg);
+          }, function (arg) {
+            resume("throw", arg);
+          });
+        } else {
+          settle(result.done ? "return" : "normal", result.value);
+        }
+      } catch (err) {
+        settle("throw", err);
+      }
+    }
+
+    function settle(type, value) {
+      switch (type) {
+        case "return":
+          front.resolve({
+            value: value,
+            done: true
+          });
+          break;
+
+        case "throw":
+          front.reject(value);
+          break;
+
+        default:
+          front.resolve({
+            value: value,
+            done: false
+          });
+          break;
+      }
+
+      front = front.next;
+
+      if (front) {
+        resume(front.key, front.arg);
+      } else {
+        back = null;
+      }
+    }
+
+    this._invoke = send;
+
+    if (typeof gen.return !== "function") {
+      this.return = undefined;
+    }
+  }
+
+  if (typeof Symbol === "function" && Symbol.asyncIterator) {
+    AsyncGenerator.prototype[Symbol.asyncIterator] = function () {
+      return this;
+    };
+  }
+
+  AsyncGenerator.prototype.next = function (arg) {
+    return this._invoke("next", arg);
+  };
+
+  AsyncGenerator.prototype.throw = function (arg) {
+    return this._invoke("throw", arg);
+  };
+
+  AsyncGenerator.prototype.return = function (arg) {
+    return this._invoke("return", arg);
+  };
+
+  return {
+    wrap: function (fn) {
+      return function () {
+        return new AsyncGenerator(fn.apply(this, arguments));
+      };
+    },
+    await: function (value) {
+      return new AwaitValue(value);
+    }
+  };
+}();
 
 var classCallCheck = function (instance, Constructor) {
   if (!(instance instanceof Constructor)) {
@@ -374,8 +487,8 @@ var GraphQLFactoryBaseBackend = function () {
   function GraphQLFactoryBaseBackend(namespace, graphql, factory) {
     var _this = this;
 
-    var config = arguments.length <= 3 || arguments[3] === undefined ? {} : arguments[3];
-    var crud = arguments.length <= 4 || arguments[4] === undefined ? {} : arguments[4];
+    var config = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+    var crud = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
     classCallCheck(this, GraphQLFactoryBaseBackend);
 
     this.type = 'GraphQLFactoryBaseBackend';
@@ -781,8 +894,8 @@ var GraphQLFactoryBaseBackend = function () {
 }();
 
 function GraphQLFactoryBaseBackend$1 (namespace, graphql, factory) {
-  var config = arguments.length <= 3 || arguments[3] === undefined ? {} : arguments[3];
-  var crud = arguments.length <= 4 || arguments[4] === undefined ? {} : arguments[4];
+  var config = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+  var crud = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
 
   return new GraphQLFactoryBaseBackend(namespace, graphql, factory, config, crud);
 }
@@ -886,7 +999,7 @@ function mongodb (namespace, graphql, factory, db, config, connection) {
 function create$2(type) {
   var backend = this;
   return function (source, args) {
-    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
     var r = backend.r;
     var connection = backend.connection;
@@ -920,7 +1033,7 @@ function create$2(type) {
 function read$2(type) {
   var backend = this;
   return function (source, args) {
-    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
     var r = backend.r;
     var connection = backend.connection;
@@ -970,7 +1083,7 @@ function read$2(type) {
 function update$2(type) {
   var backend = this;
   return function (source, args) {
-    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
     var r = backend.r;
     var connection = backend.connection;
@@ -1005,7 +1118,7 @@ function update$2(type) {
 function del$2(type) {
   var backend = this;
   return function (source, args) {
-    var context = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+    var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
     var util = backend.util;
     var q = backend.q;
@@ -1368,7 +1481,7 @@ var GraphQLFactoryBackendQueryBuilder = function () {
   }, {
     key: 'insert',
     value: function insert(args) {
-      var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+      var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
       var r = this._r;
       var table = this._collection;
@@ -1387,7 +1500,7 @@ var GraphQLFactoryBackendQueryBuilder = function () {
   }, {
     key: 'update',
     value: function update(args) {
-      var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+      var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
       var r = this._r;
       var table = this._collection;
@@ -1408,7 +1521,7 @@ var GraphQLFactoryBackendQueryBuilder = function () {
   }, {
     key: 'delete',
     value: function _delete(id) {
-      var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+      var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
       id = _.isObject(id) && !_.isArray(id) ? this._b.getPrimaryFromArgs(this._type, id) : id;
       var r = this._r;

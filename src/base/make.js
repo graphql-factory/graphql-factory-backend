@@ -205,7 +205,7 @@ export function make () {
         let mutationFieldName = _.includes(['create', 'update', 'delete'], mname) ? `${mname}${tname}` : mname
 
         _.set(this._definition.types, `${mutationName}.fields.${mutationFieldName}`, {
-          type: m.type || mname === 'delete' ? 'Boolean' : tname,
+          type: mname === 'delete' && !m.type ? 'Boolean' : m.type || tname,
           args: m.args || getArgs.call(this, 'mutation', definition, m, mname),
           resolve: `${mutationFieldName}`
         })
