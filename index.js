@@ -33,8 +33,8 @@ function makeFieldDef(fieldDef) {
 }
 
 function computeUniques(fields) {
-  var mixed = {};
-  var uniques = [];
+  var mixed = {},
+      uniques = [];
 
   _.forEach(fields, function (fieldDef, field) {
     var type = _.isArray(fieldDef.type) ? _.get(fieldDef, 'type[0]') : fieldDef.type;
@@ -54,8 +54,8 @@ function getArgs(opType, definition) {
   var _this = this;
 
   var args = {};
-  var fields = definition.fields;
-  var _backend = definition._backend;
+  var fields = definition.fields,
+      _backend = definition._backend;
 
 
   if (opType === 'query') {
@@ -96,8 +96,8 @@ function makeRelations() {
   var _this2 = this;
 
   _.forEach(this._types, function (definition, name) {
-    var fields = definition.fields;
-    var _backend = definition._backend;
+    var fields = definition.fields,
+        _backend = definition._backend;
 
     // examine each field
 
@@ -106,9 +106,9 @@ function makeRelations() {
       var typeName = _.isArray(type) ? type[0] : type;
       if (!type) return true;
       fieldDef = fields[fieldName] = makeFieldDef(fieldDef);
-      var _fieldDef = fieldDef;
-      var belongsTo = _fieldDef.belongsTo;
-      var has = _fieldDef.has;
+      var _fieldDef = fieldDef,
+          belongsTo = _fieldDef.belongsTo,
+          has = _fieldDef.has;
 
       // add belongsTo relationship to the current type
 
@@ -142,8 +142,8 @@ function make() {
 
   // analyze each type and construct graphql schemas
   _.forEach(this._types, function (definition, tname) {
-    var fields = definition.fields;
-    var _backend = definition._backend;
+    var fields = definition.fields,
+        _backend = definition._backend;
 
     _this3._definition.types[tname] = definition;
 
@@ -152,13 +152,13 @@ function make() {
     if (!_.isObject(fields) || !_.isObject(_backend)) return true;
 
     // get deconstruct the backend config
-    var schema = _backend.schema;
-    var table = _backend.table;
-    var collection = _backend.collection;
-    var store = _backend.store;
-    var db = _backend.db;
-    var mutation = _backend.mutation;
-    var query = _backend.query;
+    var schema = _backend.schema,
+        table = _backend.table,
+        collection = _backend.collection,
+        store = _backend.store,
+        db = _backend.db,
+        mutation = _backend.mutation,
+        query = _backend.query;
 
     // allow the collection to be specified as the collection or table field
 
@@ -626,9 +626,8 @@ var GraphQLFactoryBaseBackend = function () {
     value: function getUniqueArgs(type, args) {
       var filters = [];
 
-      var _getTypeBackend = this.getTypeBackend(type);
-
-      var uniques = _getTypeBackend.computed.uniques;
+      var _getTypeBackend = this.getTypeBackend(type),
+          uniques = _getTypeBackend.computed.uniques;
 
       _.forEach(uniques, function (unique) {
         var ufields = _.map(unique, function (u) {
@@ -721,10 +720,8 @@ var GraphQLFactoryBaseBackend = function () {
 
       var values = [];
 
-      var _getTypeDefinition = this.getTypeDefinition(type);
-
-      var fields = _getTypeDefinition.fields;
-
+      var _getTypeDefinition = this.getTypeDefinition(type),
+          fields = _getTypeDefinition.fields;
 
       _.forEach(args, function (arg, name) {
         var fieldDef = _.get(fields, name, {});
@@ -736,8 +733,8 @@ var GraphQLFactoryBaseBackend = function () {
         var computed = _.get(typeDef, '_backend.computed');
         if (computed && related) {
           (function () {
-            var store = computed.store;
-            var collection = computed.collection;
+            var store = computed.store,
+                collection = computed.collection;
 
             values = _.union(values, _.map(isList ? arg : [arg], function (id) {
               return { store: store, collection: collection, id: id };
@@ -753,24 +750,23 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'getTypeInfo',
     value: function getTypeInfo(type, info) {
-      var _getTypeDefinition2 = this.getTypeDefinition(type);
+      var _getTypeDefinition2 = this.getTypeDefinition(type),
+          _backend = _getTypeDefinition2._backend,
+          fields = _getTypeDefinition2.fields;
 
-      var _backend = _getTypeDefinition2._backend;
-      var fields = _getTypeDefinition2.fields;
-      var _backend$computed = _backend.computed;
-      var primary = _backend$computed.primary;
-      var primaryKey = _backend$computed.primaryKey;
-      var collection = _backend$computed.collection;
-      var store = _backend$computed.store;
-      var before = _backend$computed.before;
+      var _backend$computed = _backend.computed,
+          primary = _backend$computed.primary,
+          primaryKey = _backend$computed.primaryKey,
+          collection = _backend$computed.collection,
+          store = _backend$computed.store,
+          before = _backend$computed.before;
 
       var nested = this.isNested(info);
       var currentPath = this.getCurrentPath(info);
 
-      var _getRelations = this.getRelations(type, info);
-
-      var belongsTo = _getRelations.belongsTo;
-      var has = _getRelations.has;
+      var _getRelations = this.getRelations(type, info),
+          belongsTo = _getRelations.belongsTo,
+          has = _getRelations.has;
 
       return {
         _backend: _backend,
@@ -792,9 +788,8 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'getPrimaryFromArgs',
     value: function getPrimaryFromArgs(type, args) {
-      var _getTypeComputed = this.getTypeComputed(type);
-
-      var primary = _getTypeComputed.primary;
+      var _getTypeComputed = this.getTypeComputed(type),
+          primary = _getTypeComputed.primary;
 
       if (!primary) throw 'Unable to obtain primary';
       var pk = _.map(_.isArray(primary) ? primary : [primary], function (k) {
@@ -810,10 +805,9 @@ var GraphQLFactoryBaseBackend = function () {
     value: function updateArgsWithPrimary(type, args) {
       var newArgs = _.cloneDeep(args);
 
-      var _getTypeComputed2 = this.getTypeComputed(type);
-
-      var primary = _getTypeComputed2.primary;
-      var primaryKey = _getTypeComputed2.primaryKey;
+      var _getTypeComputed2 = this.getTypeComputed(type),
+          primary = _getTypeComputed2.primary,
+          primaryKey = _getTypeComputed2.primaryKey;
 
       var pk = this.getPrimaryFromArgs(type, args);
       if (primary.length > 1 && _.without(pk, undefined).length === primary.length) {
@@ -862,8 +856,8 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'plugin',
     get: function get() {
-      var _plugin = {};
-      var obj = {};
+      var _plugin = {},
+          obj = {};
 
       // merge all plugins
 
@@ -1001,16 +995,15 @@ function create$2(type) {
   return function (source, args) {
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
-    var r = backend.r;
-    var connection = backend.connection;
-    var util = backend.util;
-    var q = backend.q;
+    var r = backend.r,
+        connection = backend.connection,
+        util = backend.util,
+        q = backend.q;
 
-    var _backend$getTypeInfo = backend.getTypeInfo(type, info);
-
-    var collection = _backend$getTypeInfo.collection;
-    var store = _backend$getTypeInfo.store;
-    var before = _backend$getTypeInfo.before;
+    var _backend$getTypeInfo = backend.getTypeInfo(type, info),
+        collection = _backend$getTypeInfo.collection,
+        store = _backend$getTypeInfo.store,
+        before = _backend$getTypeInfo.before;
 
     var table = r.db(store).table(collection);
     var beforeHook = _.get(before, 'create' + type);
@@ -1035,22 +1028,20 @@ function read$2(type) {
   return function (source, args) {
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
-    var r = backend.r;
-    var connection = backend.connection;
-    var util = backend.util;
+    var r = backend.r,
+        connection = backend.connection,
+        util = backend.util;
 
-    var _backend$getTypeInfo = backend.getTypeInfo(type, info);
-
-    var collection = _backend$getTypeInfo.collection;
-    var store = _backend$getTypeInfo.store;
-    var before = _backend$getTypeInfo.before;
+    var _backend$getTypeInfo = backend.getTypeInfo(type, info),
+        collection = _backend$getTypeInfo.collection,
+        store = _backend$getTypeInfo.store,
+        before = _backend$getTypeInfo.before;
 
     var table = r.db(store).table(collection);
 
-    var _backend$filter$getRe = backend.filter.getRelationFilter(type, backend, source, info, table);
-
-    var filter = _backend$filter$getRe.filter;
-    var many = _backend$filter$getRe.many;
+    var _backend$filter$getRe = backend.filter.getRelationFilter(type, backend, source, info, table),
+        filter = _backend$filter$getRe.filter,
+        many = _backend$filter$getRe.many;
 
     var beforeHook = _.get(before, 'read' + type);
 
@@ -1085,16 +1076,15 @@ function update$2(type) {
   return function (source, args) {
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
-    var r = backend.r;
-    var connection = backend.connection;
-    var util = backend.util;
-    var q = backend.q;
+    var r = backend.r,
+        connection = backend.connection,
+        util = backend.util,
+        q = backend.q;
 
-    var _backend$getTypeInfo = backend.getTypeInfo(type, info);
-
-    var collection = _backend$getTypeInfo.collection;
-    var store = _backend$getTypeInfo.store;
-    var before = _backend$getTypeInfo.before;
+    var _backend$getTypeInfo = backend.getTypeInfo(type, info),
+        collection = _backend$getTypeInfo.collection,
+        store = _backend$getTypeInfo.store,
+        before = _backend$getTypeInfo.before;
 
     var table = r.db(store).table(collection);
     var id = backend.getPrimaryFromArgs(type, args);
@@ -1120,12 +1110,11 @@ function del$2(type) {
   return function (source, args) {
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
-    var util = backend.util;
-    var q = backend.q;
+    var util = backend.util,
+        q = backend.q;
 
-    var _backend$getTypeInfo = backend.getTypeInfo(type, info);
-
-    var before = _backend$getTypeInfo.before;
+    var _backend$getTypeInfo = backend.getTypeInfo(type, info),
+        before = _backend$getTypeInfo.before;
 
     var beforeHook = _.get(before, 'delete' + type);
     var query = function query() {
@@ -1149,16 +1138,14 @@ function createTable(dbc, name, primaryKey) {
 }
 
 function initStore(type, rebuild, seedData) {
-  var r = this.r;
-  var connection = this.connection;
+  var r = this.r,
+      connection = this.connection;
 
-  var _getTypeBackend = this.getTypeBackend(type);
-
-  var _getTypeBackend$compu = _getTypeBackend.computed;
-  var primaryKey = _getTypeBackend$compu.primaryKey;
-  var collection = _getTypeBackend$compu.collection;
-  var store = _getTypeBackend$compu.store;
-
+  var _getTypeBackend = this.getTypeBackend(type),
+      _getTypeBackend$compu = _getTypeBackend.computed,
+      primaryKey = _getTypeBackend$compu.primaryKey,
+      collection = _getTypeBackend$compu.collection,
+      store = _getTypeBackend$compu.store;
 
   if (!collection || !store) throw new Error('Invalid store init config');
 
@@ -1187,10 +1174,9 @@ function initStore(type, rebuild, seedData) {
 function getCollectionFilter(type, backend) {
   var r = backend.r;
 
-  var _backend$getTypeBacke = backend.getTypeBackend(type);
-
-  var collection = _backend$getTypeBacke.collection;
-  var store = _backend$getTypeBacke.store;
+  var _backend$getTypeBacke = backend.getTypeBackend(type),
+      collection = _backend$getTypeBacke.collection,
+      store = _backend$getTypeBacke.store;
 
   return r.db(store).collection(collection);
 }
@@ -1201,15 +1187,15 @@ function getRelationFilter(type, backend, source, info, filter) {
   var many = true;
   var r = backend.r;
 
-  var _backend$getTypeInfo = backend.getTypeInfo(type, info);
-
-  var fields = _backend$getTypeInfo.fields;
-  var nested = _backend$getTypeInfo.nested;
-  var currentPath = _backend$getTypeInfo.currentPath;
-  var belongsTo = _backend$getTypeInfo.belongsTo;
-  var has = _backend$getTypeInfo.has;
+  var _backend$getTypeInfo = backend.getTypeInfo(type, info),
+      fields = _backend$getTypeInfo.fields,
+      nested = _backend$getTypeInfo.nested,
+      currentPath = _backend$getTypeInfo.currentPath,
+      belongsTo = _backend$getTypeInfo.belongsTo,
+      has = _backend$getTypeInfo.has;
 
   // check for nested with belongsTo relationship
+
 
   if (nested && _.has(fields, belongsTo.primary) && _.has(source, belongsTo.foreign)) {
     many = belongsTo.many;
@@ -1241,11 +1227,11 @@ function getArgsFilter(type, backend, args, filter) {
   filter = filter || getCollectionFilter(type, backend);
   var argKeys = _.keys(args);
 
-  var _backend$getTypeCompu = backend.getTypeComputed(type);
-
-  var primary = _backend$getTypeCompu.primary;
+  var _backend$getTypeCompu = backend.getTypeComputed(type),
+      primary = _backend$getTypeCompu.primary;
 
   // check if the primary keys were supplied
+
 
   if (_.intersection(primary, argKeys).length === argKeys.length && argKeys.length > 0) {
     var priArgs = backend.getPrimaryFromArgs(type, args);
@@ -1284,9 +1270,8 @@ function violatesUnique(type, backend, args, filter) {
 function notThisRecord(type, backend, args, filter) {
   filter = filter || getCollectionFilter(type, backend);
 
-  var _backend$getTypeCompu2 = backend.getTypeComputed(type);
-
-  var primaryKey = _backend$getTypeCompu2.primaryKey;
+  var _backend$getTypeCompu2 = backend.getTypeComputed(type),
+      primaryKey = _backend$getTypeCompu2.primaryKey;
 
   var id = backend.getPrimaryFromArgs(type, args);
   return filter.filter(function (obj) {
@@ -1316,10 +1301,9 @@ var GraphQLFactoryBackendQueryBuilder = function () {
     this._value = this._r;
 
     if (type) {
-      var _backend$getTypeCompu = backend.getTypeComputed(type);
-
-      var store = _backend$getTypeCompu.store;
-      var collection = _backend$getTypeCompu.collection;
+      var _backend$getTypeCompu = backend.getTypeComputed(type),
+          store = _backend$getTypeCompu.store,
+          collection = _backend$getTypeCompu.collection;
 
       this._type = type;
       this._storeName = store;
@@ -1627,18 +1611,16 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
     _this.defaultStore = 'test';
 
     _this.getTypeStore = function (type) {
-      var _this$getTypeComputed = _this.getTypeComputed(type);
-
-      var store = _this$getTypeComputed.store;
+      var _this$getTypeComputed = _this.getTypeComputed(type),
+          store = _this$getTypeComputed.store;
 
       return _this.r.db(store);
     };
 
     _this.getTypeCollection = function (type) {
-      var _this$getTypeComputed2 = _this.getTypeComputed(type);
-
-      var store = _this$getTypeComputed2.store;
-      var collection = _this$getTypeComputed2.collection;
+      var _this$getTypeComputed2 = _this.getTypeComputed(type),
+          store = _this$getTypeComputed2.store,
+          collection = _this$getTypeComputed2.collection;
 
       return _this.r.db(store).table(collection);
     };
