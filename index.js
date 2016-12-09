@@ -204,7 +204,7 @@ function make() {
         _.set(_this3._definition.types, queryName + '.fields.' + queryFieldName, {
           type: q.type || [tname],
           args: q.args || getArgs.call(_this3, 'query', definition, q, qname),
-          resolve: '' + queryFieldName
+          resolve: q.resolve ? q.resolve : '' + queryFieldName
         });
 
         if (q === true || !_.has(q, 'resolve')) {
@@ -234,7 +234,7 @@ function make() {
         _.set(_this3._definition.types, mutationName + '.fields.' + mutationFieldName, {
           type: mname === 'delete' && !m.type ? 'Boolean' : m.type || tname,
           args: m.args || getArgs.call(_this3, 'mutation', definition, m, mname),
-          resolve: '' + mutationFieldName
+          resolve: m.resolve ? m.resolve : '' + mutationFieldName
         });
 
         // check for mutation resolve

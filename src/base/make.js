@@ -177,7 +177,7 @@ export function make () {
         _.set(this._definition.types, `${queryName}.fields.${queryFieldName}`, {
           type: q.type || [tname],
           args: q.args || getArgs.call(this, 'query', definition, q, qname),
-          resolve: `${queryFieldName}`
+          resolve: q.resolve ? q.resolve : `${queryFieldName}`
         })
 
         if (q === true || !_.has(q, 'resolve')) {
@@ -207,7 +207,7 @@ export function make () {
         _.set(this._definition.types, `${mutationName}.fields.${mutationFieldName}`, {
           type: mname === 'delete' && !m.type ? 'Boolean' : m.type || tname,
           args: m.args || getArgs.call(this, 'mutation', definition, m, mname),
-          resolve: `${mutationFieldName}`
+          resolve: m.resolve ? m.resolve : `${mutationFieldName}`
         })
 
         // check for mutation resolve
