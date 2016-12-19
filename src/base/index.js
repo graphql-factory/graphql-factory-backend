@@ -286,6 +286,7 @@ export class GraphQLFactoryBaseBackend {
 
   // returns a lib object lazily, make it only once
   get lib () {
+    console.log(this.plugin)
     if (!this._lib) this._lib = this.factory.make(this.plugin)
     return this._lib
   }
