@@ -120,8 +120,9 @@ export class GraphQLFactoryBaseBackend {
     // create current backend plugin
     _.forEach(this._definition, (def, field) => {
       if (_.keys(def).length) {
-        if (field === 'types') obj[field] = _.mapValues(def, (v) => _.omit(v, '_backend'))
-        else obj[field] = def
+        // if (field === 'types') obj[field] = _.mapValues(def, (v) => _.omit(v, '_backend'))
+        // else obj[field] = def
+        obj[field] = def
       }
     })
 

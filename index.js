@@ -299,15 +299,118 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
   return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj;
 };
 
+var asyncGenerator = function () {
+  function AwaitValue(value) {
+    this.value = value;
+  }
 
+  function AsyncGenerator(gen) {
+    var front, back;
 
+    function send(key, arg) {
+      return new Promise(function (resolve, reject) {
+        var request = {
+          key: key,
+          arg: arg,
+          resolve: resolve,
+          reject: reject,
+          next: null
+        };
 
+        if (back) {
+          back = back.next = request;
+        } else {
+          front = back = request;
+          resume(key, arg);
+        }
+      });
+    }
 
+    function resume(key, arg) {
+      try {
+        var result = gen[key](arg);
+        var value = result.value;
 
+        if (value instanceof AwaitValue) {
+          Promise.resolve(value.value).then(function (arg) {
+            resume("next", arg);
+          }, function (arg) {
+            resume("throw", arg);
+          });
+        } else {
+          settle(result.done ? "return" : "normal", result.value);
+        }
+      } catch (err) {
+        settle("throw", err);
+      }
+    }
 
+    function settle(type, value) {
+      switch (type) {
+        case "return":
+          front.resolve({
+            value: value,
+            done: true
+          });
+          break;
 
+        case "throw":
+          front.reject(value);
+          break;
 
+        default:
+          front.resolve({
+            value: value,
+            done: false
+          });
+          break;
+      }
 
+      front = front.next;
+
+      if (front) {
+        resume(front.key, front.arg);
+      } else {
+        back = null;
+      }
+    }
+
+    this._invoke = send;
+
+    if (typeof gen.return !== "function") {
+      this.return = undefined;
+    }
+  }
+
+  if (typeof Symbol === "function" && Symbol.asyncIterator) {
+    AsyncGenerator.prototype[Symbol.asyncIterator] = function () {
+      return this;
+    };
+  }
+
+  AsyncGenerator.prototype.next = function (arg) {
+    return this._invoke("next", arg);
+  };
+
+  AsyncGenerator.prototype.throw = function (arg) {
+    return this._invoke("throw", arg);
+  };
+
+  AsyncGenerator.prototype.return = function (arg) {
+    return this._invoke("return", arg);
+  };
+
+  return {
+    wrap: function (fn) {
+      return function () {
+        return new AsyncGenerator(fn.apply(this, arguments));
+      };
+    },
+    await: function (value) {
+      return new AwaitValue(value);
+    }
+  };
+}();
 
 var classCallCheck = function (instance, Constructor) {
   if (!(instance instanceof Constructor)) {
@@ -333,10 +436,6 @@ var createClass = function () {
   };
 }();
 
-
-
-
-
 var defineProperty = function (obj, key, value) {
   if (key in obj) {
     Object.defineProperty(obj, key, {
@@ -350,31 +449,6 @@ var defineProperty = function (obj, key, value) {
   }
 
   return obj;
-};
-
-var get$1 = function get$1(object, property, receiver) {
-  if (object === null) object = Function.prototype;
-  var desc = Object.getOwnPropertyDescriptor(object, property);
-
-  if (desc === undefined) {
-    var parent = Object.getPrototypeOf(object);
-
-    if (parent === null) {
-      return undefined;
-    } else {
-      return get$1(parent, property, receiver);
-    }
-  } else if ("value" in desc) {
-    return desc.value;
-  } else {
-    var getter = desc.get;
-
-    if (getter === undefined) {
-      return undefined;
-    }
-
-    return getter.call(receiver);
-  }
 };
 
 var inherits = function (subClass, superClass) {
@@ -393,46 +467,12 @@ var inherits = function (subClass, superClass) {
   if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass;
 };
 
-
-
-
-
-
-
-
-
-
-
 var possibleConstructorReturn = function (self, call) {
   if (!self) {
     throw new ReferenceError("this hasn't been initialised - super() hasn't been called");
   }
 
   return call && (typeof call === "object" || typeof call === "function") ? call : self;
-};
-
-
-
-var set = function set(object, property, value, receiver) {
-  var desc = Object.getOwnPropertyDescriptor(object, property);
-
-  if (desc === undefined) {
-    var parent = Object.getPrototypeOf(object);
-
-    if (parent !== null) {
-      set(parent, property, value, receiver);
-    }
-  } else if ("value" in desc && desc.writable) {
-    desc.value = value;
-  } else {
-    var setter = desc.set;
-
-    if (setter !== undefined) {
-      setter.call(receiver, value);
-    }
-  }
-
-  return value;
 };
 
 /*
@@ -832,9 +872,9 @@ var GraphQLFactoryBaseBackend = function () {
       // create current backend plugin
       _.forEach(this._definition, function (def, field) {
         if (_.keys(def).length) {
-          if (field === 'types') obj[field] = _.mapValues(def, function (v) {
-            return _.omit(v, '_backend');
-          });else obj[field] = def;
+          // if (field === 'types') obj[field] = _.mapValues(def, (v) => _.omit(v, '_backend'))
+          // else obj[field] = def
+          obj[field] = def;
         }
       });
 
@@ -851,12 +891,12 @@ var GraphQLFactoryBaseBackend = function () {
   return GraphQLFactoryBaseBackend;
 }();
 
-var GraphQLFactoryBaseBackend$1 = function (namespace, graphql, factory) {
+function GraphQLFactoryBaseBackend$1 (namespace, graphql, factory) {
   var config = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
   var crud = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : {};
 
   return new GraphQLFactoryBaseBackend(namespace, graphql, factory, config, crud);
-};
+}
 
 function create() {
   return function () {};
@@ -866,7 +906,7 @@ function read() {
   return function () {};
 }
 
-function update$1() {
+function update() {
   return function () {};
 }
 
@@ -874,7 +914,7 @@ function del() {
   return function () {};
 }
 
-var crud = { create: create, read: read, update: update$1, delete: del };
+var crud = { create: create, read: read, update: update, delete: del };
 
 // extended backend class for RethinkDB
 var GraphQLFactoryKnexBackend = function (_GraphQLFactoryBaseBa) {
@@ -902,11 +942,11 @@ var GraphQLFactoryKnexBackend = function (_GraphQLFactoryBaseBa) {
 }(GraphQLFactoryBaseBackend$1);
 
 // helper function to instantiate a new backend
-var knex = function (namespace, graphql, factory, knex, config) {
+function knex (namespace, graphql, factory, knex, config) {
   return new GraphQLFactoryKnexBackend(namespace, graphql, factory, knex, config);
-};
+}
 
-function create$2() {
+function create$1() {
   return function () {};
 }
 
@@ -914,7 +954,7 @@ function read$1() {
   return function () {};
 }
 
-function update$2() {
+function update$1() {
   return function () {};
 }
 
@@ -922,7 +962,7 @@ function del$1() {
   return function () {};
 }
 
-var crud$1 = { create: create$2, read: read$1, update: update$2, delete: del$1 };
+var crud$1 = { create: create$1, read: read$1, update: update$1, delete: del$1 };
 
 // extended backend class for RethinkDB
 var GraphQLFactoryMongoDBBackend = function (_GraphQLFactoryBaseBa) {
@@ -950,11 +990,11 @@ var GraphQLFactoryMongoDBBackend = function (_GraphQLFactoryBaseBa) {
 }(GraphQLFactoryBaseBackend$1);
 
 // helper function to instantiate a new backend
-var mongodb = function (namespace, graphql, factory, db, config, connection) {
+function mongodb (namespace, graphql, factory, db, config, connection) {
   return new GraphQLFactoryMongoDBBackend(namespace, graphql, factory, db, config, connection);
-};
+}
 
-function create$4(type) {
+function create$2(type) {
   var backend = this;
   return function (source, args) {
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
@@ -1035,7 +1075,7 @@ function read$2(type) {
   };
 }
 
-function update$3(type) {
+function update$2(type) {
   var backend = this;
   return function (source, args) {
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
@@ -1243,7 +1283,7 @@ function notThisRecord(type, backend, args, filter) {
   });
 }
 
-var filter$1 = {
+var filter = {
   getCollectionFilter: getCollectionFilter,
   getRelationFilter: getRelationFilter,
   getArgsFilter: getArgsFilter,
@@ -1251,9 +1291,9 @@ var filter$1 = {
   notThisRecord: notThisRecord
 };
 
-var util = function (backend) {
+function util (backend) {
   return {};
-};
+}
 
 var GraphQLFactoryBackendQueryBuilder = function () {
   function GraphQLFactoryBackendQueryBuilder(backend, type) {
@@ -1548,12 +1588,12 @@ var GraphQLFactoryBackendQueryBuilder = function () {
   return GraphQLFactoryBackendQueryBuilder;
 }();
 
-var q = function (backend) {
+function q (backend) {
   return new GraphQLFactoryBackendQueryBuilder(backend);
-};
+}
 
 // rethinkdb specific modules
-var crud$2 = { create: create$4, read: read$2, update: update$3, delete: del$2, initStore: initStore, filter: filter$1, util: util, q: q };
+var crud$2 = { create: create$2, read: read$2, update: update$2, delete: del$2, initStore: initStore, filter: filter, util: util, q: q };
 
 // extended backend class for RethinkDB
 var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
@@ -1598,9 +1638,9 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
 }(GraphQLFactoryBaseBackend$1);
 
 // helper function to instantiate a new backend
-var rethinkdb = function (namespace, graphql, factory, r, config, connection) {
+function rethinkdb (namespace, graphql, factory, r, config, connection) {
   return new GraphQLFactoryRethinkDBBackend(namespace, graphql, factory, r, config, connection);
-};
+}
 
 var index = {
   base: GraphQLFactoryBaseBackend$1,
