@@ -150,7 +150,9 @@ export class GraphQLFactoryBaseBackend {
 
   // determine if the resolve is nested
   isNested (info) {
-    return _.get(info, 'path', []).length > 1
+    // support for current and previous graphql info objects
+    let infoPath = _.get(info, 'path', [])
+    return _.isArray(infoPath) ? infoPath.length > 1 : infoPath.prev !== undefined
   }
 
   // get parent type
@@ -160,7 +162,9 @@ export class GraphQLFactoryBaseBackend {
 
   // current path
   getCurrentPath (info) {
-    return _.last(_.get(info, 'path'))
+    // support for current and previous graphql info objects
+    let infoPath = _.get(info, 'path')
+    return _.isArray(infoPath) ? _.last(infoPath) : infoPath.key
   }
 
   // get type definition

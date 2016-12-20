@@ -607,7 +607,9 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'isNested',
     value: function isNested(info) {
-      return _.get(info, 'path', []).length > 1;
+      // support for current and previous graphql info objects
+      var infoPath = _.get(info, 'path', []);
+      return _.isArray(infoPath) ? infoPath.length > 1 : infoPath.prev !== undefined;
     }
 
     // get parent type
@@ -623,7 +625,9 @@ var GraphQLFactoryBaseBackend = function () {
   }, {
     key: 'getCurrentPath',
     value: function getCurrentPath(info) {
-      return _.last(_.get(info, 'path'));
+      // support for current and previous graphql info objects
+      var infoPath = _.get(info, 'path');
+      return _.isArray(infoPath) ? _.last(infoPath) : infoPath.key;
     }
 
     // get type definition
