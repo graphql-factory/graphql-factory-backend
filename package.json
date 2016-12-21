@@ -1,6 +1,6 @@
 {
   "name": "graphql-factory-backend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Backend plugin for graphql-factory",
   "license": "MIT",
   "main": "index.js",
@@ -17,7 +17,8 @@
   },
   "author": "Branden Horiuchi <bhoriuchi@gmail.com>",
   "dependencies": {
-    "lodash": "^4.15.0"
+    "bluebird": "^3.4.6",
+    "lodash": "^4.17.2"
   },
   "devDependencies": {
     "chai": "^3.5.0",
