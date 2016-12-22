@@ -1,15 +1,27 @@
 import _ from 'lodash'
 
+export const CREATE = 'create'
+export const READ = 'read'
+export const UPDATE = 'update'
+export const DELETE = 'delete'
 export const QUERY = 'query'
 export const MUTATION = 'mutation'
-export const PRIMITIVES = ['String', 'Int', 'Float', 'Boolean', 'ID']
+export const STRING = 'String'
+export const INT = 'Int'
+export const FLOAT = 'Float'
+export const BOOLEAN = 'Boolean'
+export const ID = 'ID'
+export const INPUT = 'Input'
+export const ENUM = 'Enum'
+export const PRIMITIVES = [STRING, INT, FLOAT, BOOLEAN, ID]
+
 
 function makeObjectName (schema, op) {
   return `backend${_.capitalize(schema)}${_.capitalize(op)}`
 }
 
 function getPrimary (fields) {
-  let primary = _(fields).pick((v) => v.primary === true).keys().value()
+  let primary = _(fields).pickBy((v) => v.primary === true).keys().value()
   return !primary.length ? null : primary.length === 1 ? primary[0] : primary
 }
 
@@ -37,7 +49,7 @@ function makeFieldDef (fieldDef) {
   return def
 }
 
-export function computeUniques (fields) {
+function computeUniques (fields) {
   let [ mixed, uniques ] = [ {}, [] ]
   _.forEach(fields, (fieldDef, field) => {
     let type = _.isArray(fieldDef.type) ? _.get(fieldDef, 'type[0]') : fieldDef.type
@@ -52,12 +64,19 @@ export function computeUniques (fields) {
   return _.uniq(uniques)
 }
 
+export function defaultBefore () {
+  return Promise.resolve()
+}
+
 /*
  * Main compiler class
  */
 export default class GraphQLFactoryBackendCompiler {
   constructor (backend) {
     this.backend = backend
+    this.defaultStore = backend._defaultStore
+    this.extension = backend._extension
+    this.prefix = _.isString(backend._prefix) ? backend._prefix : ''
     this.definition = backend.definition
     this.definition.compile()
   }
@@ -78,30 +97,18 @@ export default class GraphQLFactoryBackendCompiler {
   computeExtension () {
     _.forEach(this.definition.types, (definition) => {
       let fields = _.get(definition, 'fields', {})
-      let ext = _.get(definition, `["${this.backend._extension}"]`, {})
+      let ext = _.get(definition, `["${this.extension}"]`, {})
       let { schema, table, collection, store, db, mutation, query } = ext
 
       if (!_.isObject(fields) || !_.isObject(ext)) return true
       let computed = ext.computed = {}
 
-      computed.collection = `${this._prefix}${collection || table}`
+      computed.collection = `${this.prefix}${collection || table}`
       computed.store = store || db || this.defaultStore
 
       // check that the type has a schema identified, otherwise create a schema with the namespace
       // allow schemas to be an array so that queries/mutations can belong to multiple schemas
       computed.schemas = !schema ? [this.backend._namespace] : _.isArray(schema) ? schema : [schema]
-      computed.queries = _.map(computed.schemas, (schema) => {
-        return {
-          schema,
-          name: makeObjectName(schema, QUERY)
-        }
-      })
-      computed.mutations = _.map(computed.schemas, (schema) => {
-        return {
-          schema,
-          name: makeObjectName(schema, MUTATION)
-        }
-      })
 
       // get the primary key name
       let primary = computed.primary = getPrimary(fields)
@@ -110,15 +117,15 @@ export default class GraphQLFactoryBackendCompiler {
       // get the uniques
       computed.uniques = computeUniques(fields)
       computed.before = {}
-
-      // support chaining
-      return this
     })
+
+    // support chaining
+    return this
   }
 
   buildQueries () {
     _.forEach(this.definition.types, (definition, typeName) => {
-      let _backend = _.get(definition, `["${this.backend._extension}"]`, {})
+      let _backend = _.get(definition, `["${this.extension}"]`, {})
       let computed = _.get(_backend, 'computed', {})
       let { query } = _backend
       let { collection, schemas } = computed
@@ -134,23 +141,24 @@ export default class GraphQLFactoryBackendCompiler {
 
         _.forEach(query, (opDef, name) => {
           let { type, args, resolve, before } = opDef
-          let fieldName = name === 'read' ? `${name}${typeName}` : name
+          let fieldName = name === READ ? `${name}${typeName}` : name
+          let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
-            type: type || [name],
-            args: args || this.buildArgs(definition, QUERY),
-            resolve: resolve || fieldName
+            type: type || [typeName],
+            args: args || this.buildArgs(definition, QUERY, typeName),
+            resolve: resolveName
           })
 
           if (opDef === true || !resolve) {
-            _.set(this.definition, `functions.${fieldName}`, this.readResolver(typeName))
+            _.set(this.definition, `functions.${resolveName}`, this.backend.readResolver(typeName))
           } else if (_.isFunction(resolve)) {
-            _.set(this.definition, `functions.${fieldName}`, resolve)
+            _.set(this.definition, `functions.${resolveName}`, resolve)
           }
 
           // check for before stub
-          before = _.isFunction(before) ? before.bind(this) : () => Promise.resolve()
-          _.set(_backend, `computed.before["${fieldName}"]`, before)
+          before = _.isFunction(before) ? before.bind(this) : defaultBefore
+          _.set(_backend, `computed.before["${resolveName}"]`, before)
         })
       })
     })
@@ -161,7 +169,7 @@ export default class GraphQLFactoryBackendCompiler {
 
   buildMutations () {
     _.forEach(this.definition.types, (definition, typeName) => {
-      let _backend = _.get(definition, `["${this.backend._extension}"]`, {})
+      let _backend = _.get(definition, `["${this.extension}"]`, {})
       let computed = _.get(_backend, 'computed', {})
       let { mutation } = _backend
       let { collection, schemas } = computed
@@ -175,27 +183,29 @@ export default class GraphQLFactoryBackendCompiler {
       // add properties for each schema type
       _.forEach(schemas, (schema) => {
         let objName = makeObjectName(schema, MUTATION)
-        _.set(this.definition.schemas, `["${schema}"].query`, objName)
+        _.set(this.definition.schemas, `["${schema}"].mutation`, objName)
 
-        _.forEach(query, (opDef, name) => {
+        _.forEach(mutation, (opDef, name) => {
           let { type, args, resolve, before } = opDef
-          let fieldName = _.includes(['create', 'update', 'delete'], name) ? `${name}${typeName}` : name
+          let ops = [CREATE, UPDATE, DELETE]
+          let fieldName = _.includes(ops, name) ? `${name}${typeName}` : name
+          let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
-            type: type || [name],
-            args: args || this.buildArgs(definition, MUTATION),
-            resolve: resolve || fieldName
+            type: name === DELETE ? BOOLEAN : type || [typeName],
+            args: args || this.buildArgs(definition, MUTATION, typeName),
+            resolve: resolveName
           })
 
           if (opDef === true || !resolve) {
-            _.set(this.definition, `functions.${fieldName}`, this[`${name}Resolver`](typeName))
+            _.set(this.definition, `functions.${resolveName}`, this.backend[`${name}Resolver`](typeName))
           } else if (_.isFunction(resolve)) {
-            _.set(this.definition, `functions.${fieldName}`, resolve)
+            _.set(this.definition, `functions.${resolveName}`, resolve)
           }
 
           // check for before stub
-          before = _.isFunction(before) ? before.bind(this) : () => Promise.resolve()
-          _.set(_backend, `computed.before["${fieldName}"]`, before)
+          before = _.isFunction(before) ? before.bind(this) : defaultBefore
+          _.set(_backend, `computed.before["${resolveName}"]`, before)
         })
       })
     })
@@ -207,7 +217,7 @@ export default class GraphQLFactoryBackendCompiler {
   buildRelations () {
     _.forEach(this.definition.types, (definition, name) => {
       let fields = _.get(definition, 'fields', {})
-      let _backend = _.get(definition, `["${this.backend._extension}"]`, {})
+      let _backend = _.get(definition, `["${this.extension}"]`, {})
 
       // examine each field
       _.forEach(fields, (fieldDef, fieldName) => {
@@ -235,7 +245,7 @@ export default class GraphQLFactoryBackendCompiler {
         // add a has relationship to the nested type. this is because the nested types resolve
         // will determine how it returns data
         if (has) {
-          let relationPath = `["${typeName}"]["${this.backend._extension}"].computed.relations`
+          let relationPath = `["${typeName}"]["${this.extension}"].computed.relations`
           _.set(this.definition.types, `["${relationPath}"].has["${name}"]["${fieldName}"]`, {
             foreign: has,
             many: _.isArray(type)
@@ -250,7 +260,9 @@ export default class GraphQLFactoryBackendCompiler {
 
   setListArgs () {
     _.forEach(this.definition.types, (typeDef, typeName) => {
-      let { name } = _.get(typeDef, `["${this.backend._extension}"].computed.queries[0]`, {})
+      let schema = _.get(typeDef, `["${this.extension}"].computed.schemas[0]`)
+      let name = makeObjectName(schema, QUERY)
+
       _.forEach(typeDef.fields, (fieldDef, fieldName) => {
         let fieldType = getType(fieldDef)
 
@@ -272,10 +284,10 @@ export default class GraphQLFactoryBackendCompiler {
   /*
    * Helper methods
    */
-  buildArgs (definition, operation) {
+  buildArgs (definition, operation, rootName) {
     let args = {}
     let fields = _.get(definition, 'fields', {})
-    let _backend = _.get(definition, `["${this.backend._extension}"]`, {})
+    let _backend = _.get(definition, `["${this.extension}"]`, {})
 
     if (operation === QUERY) args.limit = {type: 'Int'}
 
@@ -283,15 +295,16 @@ export default class GraphQLFactoryBackendCompiler {
       let type = getType(fieldDef)
       if (!type) return true
       let typeName = getTypeName(type)
+      let typeDef = _.get(this.definition.types, `["${typeName}"]`, {})
       fieldDef = fields[fieldName] = makeFieldDef(fieldDef)
 
       if (isPrimitive(type)) {
         args[fieldName] = { type }
       } else {
-        let typeBackend = _.get(this.definition.types, `["${typeName}"]["${this.backend._extension}"]`)
+        let typeBackend = _.get(this.definition.types, `["${typeName}"]["${this.extension}"]`)
 
         if (fieldDef.resolve !== false && operation === QUERY && typeBackend) {
-          fieldDef.resolve = fieldDef.resolve || `read${type}`
+          fieldDef.resolve = fieldDef.resolve || `backend_read${type}`
         } else {
           // add args for related types
           if (fieldDef.belongsTo) {
@@ -299,7 +312,22 @@ export default class GraphQLFactoryBackendCompiler {
           } else if (fieldDef.has) {
             args[fieldName] = _.isArray(fieldDef.type) ? ['String'] : 'String'
           } else {
-            args[fieldName] = { type }
+            // look for an input type
+            if (operation === MUTATION && typeDef.type !== ENUM) {
+              // for mutations with objects for args, make sure the object is an input type or do not
+              // allow it as an argument
+              if (typeDef.type === INPUT ) {
+                args[fieldName] = { type }
+              } else {
+                let inputName = `${typeName}${INPUT}`
+                let inputMatch = _.get(this.definition.types, `["${inputName}"]`, {})
+                if (inputMatch.type === INPUT) args[fieldName] = _.isArray(type) ? [inputName] : inputName
+                else console.warn('[backend warning]: calculation of type "' + rootName + '" argument "' + fieldName +
+                  '" could not find and input type and will not be added. please create type "' + inputName + '"')
+              }
+            } else {
+              args[fieldName] = { type }
+            }
           }
         }
       }

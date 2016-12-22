@@ -2,6 +2,7 @@ build
 example
 node_modules
 src
+src-v0
 test
 dist
 .babelrc

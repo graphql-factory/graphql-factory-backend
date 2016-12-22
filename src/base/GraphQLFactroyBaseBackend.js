@@ -31,14 +31,16 @@ export default class GraphQLFactoryBaseBackend extends Events {
     this._installer = installer.bind(this)
     this._extension = extension || '_backend'
     this._namespace = namespace
-    this._prefix = prefix || ''
+    this._prefix = _.isString(prefix) ? prefix : ''
     this._options = options || {}
     this._defaultStore = store || this._defaultStore || 'test'
     this._installData = {}
     this._queries = {}
     this._lib = null
     this._plugin = null
+  }
 
+  make () {
     // make the backend definition
     let compiler = new GraphQLFactoryBackendCompiler(this)
     compiler.compile()

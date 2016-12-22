@@ -1,8 +1,14 @@
 import _ from 'lodash'
 
+export function getCollectionFilter (type, backend) {
+  let { r } = backend
+  let { collection, store } = backend.getTypeBackend(type)
+  return r.db(store).collection(collection)
+}
+
 // gets relationships defined in the type definition and also
-export function getRelationFilter (backend, type, source, info, filter) {
-  filter = filter || backend.getCollection(type)
+export function getRelationFilter (type, backend, source, info, filter) {
+  filter = filter || getCollectionFilter(type, backend)
   let many = true
   let { r } = backend
   let { fields, nested, currentPath, belongsTo, has } = backend.getTypeInfo(type, info)
@@ -27,8 +33,8 @@ export function getRelationFilter (backend, type, source, info, filter) {
 }
 
 // creates a filter based on the arguments
-export function getArgsFilter (backend, type, args, filter) {
-  filter = filter || backend.getCollection(backend)
+export function getArgsFilter (type, backend, args, filter) {
+  filter = filter || getCollectionFilter(type, backend)
   let argKeys = _.keys(args)
   let { primary } = backend.getTypeComputed(type)
 
@@ -44,8 +50,8 @@ export function getArgsFilter (backend, type, args, filter) {
 }
 
 // determines unique constraints and if any have been violated
-export function violatesUnique (backend, type, args, filter) {
-  filter = filter || backend.getCollection(type)
+export function violatesUnique (type, backend, args, filter) {
+  filter = filter || getCollectionFilter(type, backend)
   let { r } = backend
   let unique = backend.getUniqueArgs(type, args)
 
@@ -72,14 +78,15 @@ export function violatesUnique (backend, type, args, filter) {
 }
 
 // get records that are not this one from a previous filter
-export function notThisRecord (backend, type, args, filter) {
-  filter = filter || backend.getCollection(backend)
+export function notThisRecord (type, backend, args, filter) {
+  filter = filter || getCollectionFilter(type, backend)
   let { primaryKey } = backend.getTypeComputed(type)
   let id = backend.getPrimaryFromArgs(type, args)
   return filter.filter((obj) => obj(primaryKey).ne(id))
 }
 
 export default {
+  getCollectionFilter,
   getRelationFilter,
   getArgsFilter,
   violatesUnique,

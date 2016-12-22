@@ -1,16 +1,10 @@
-import base from './base/index'
-import { GraphQLFactoryBaseBackend } from './base/index'
-import rethinkdb from './rethinkdb/index'
-import { GraphQLFactoryRethinkDBBackend } from './rethinkdb/index'
+import GraphQLFactoryBaseBackend from './base/GraphQLFactroyBaseBackend'
+import GraphQLFactoryRethinkDBBackend from './rethinkdb/GraphQLFactoryRethinkDBBackend'
 
-export { base }
 export { GraphQLFactoryBaseBackend }
-export { rethinkdb }
 export { GraphQLFactoryRethinkDBBackend }
 
 export default {
-  base,
   GraphQLFactoryBaseBackend,
-  rethinkdb,
   GraphQLFactoryRethinkDBBackend
 }

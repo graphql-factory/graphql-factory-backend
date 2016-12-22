@@ -144,7 +144,7 @@ export function make () {
 
     // get the primary key name
     let primary = this.getPrimary(fields)
-    let primaryKey = _backend.primaryKey || _.isArray(primary) ? _.camelCase(primary.join('-')) : primary
+    let primaryKey = _backend.primaryKey || _.isArray(primary) ? _.camelCase(primary.sort().join('-')) : primary
 
     // get the uniques
     let uniques = computeUniques(fields)

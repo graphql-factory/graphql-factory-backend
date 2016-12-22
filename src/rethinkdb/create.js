@@ -1,16 +1,18 @@
 import _ from 'lodash'
+import { violatesUnique } from './filter'
+import Q from './q'
 
-export default function create (type) {
-  let backend = this
+export default function create (backend, type) {
   return function (source, args, context = {}, info) {
-    let { r, connection, util, q } = backend
+    let { r, connection } = backend
+    let q = Q(backend)
     let { collection, store, before } = backend.getTypeInfo(type, info)
     let table = r.db(store).table(collection)
-    let beforeHook = _.get(before, `create${type}`)
+    let beforeHook = _.get(before, `backend_create${type}`)
 
     // main query
     let query = () => {
-      let filter = backend.filter.violatesUnique(type, backend, args, table)
+      let filter = violatesUnique(backend, type, args, table)
         .branch(
           r.error('unique field violation'),
           q.type(type)
@@ -24,7 +26,7 @@ export default function create (type) {
 
     // run before stub
     let resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info)
-    if (util.isPromise(resolveBefore)) return resolveBefore.then(query)
+    if (_.isPromise(resolveBefore)) return resolveBefore.then(query)
     return query()
   }
 }

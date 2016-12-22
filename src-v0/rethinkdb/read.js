@@ -1,19 +1,19 @@
 import _ from 'lodash'
-import { getRelationFilter, getArgsFilter } from './filter'
 
-export default function read (backend, type) {
+export default function read (type) {
+  let backend = this
   return function (source, args, context = {}, info) {
-    let { r, connection } = backend
+    let { r, connection, util } = backend
     let { collection, store, before } = backend.getTypeInfo(type, info)
     let table = r.db(store).table(collection)
 
-    let { filter, many } = getRelationFilter(backend, type, source, info, table)
+    let { filter, many } = backend.filter.getRelationFilter(type, backend, source, info, table)
     let beforeHook = _.get(before, `read${type}`)
 
     // main query
     let query = () => {
       // filter args
-      filter = getArgsFilter(backend, type, args, filter)
+      filter = backend.filter.getArgsFilter(type, backend, args, filter)
 
       // add standard query modifiers
       if (_.isNumber(args.limit)) filter = filter.limit(args.limit)
@@ -31,7 +31,7 @@ export default function read (backend, type) {
 
     // run before stub
     let resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info)
-    if (_.isPromise(resolveBefore)) return resolveBefore.then(query)
+    if (util.isPromise(resolveBefore)) return resolveBefore.then(query)
     return query()
   }
 }

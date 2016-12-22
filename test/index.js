@@ -1,3 +1,2 @@
-/**
- * Created by bhoriuchi on 9/7/16.
- */
+require('babel-register')
+require('./test')

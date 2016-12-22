@@ -1,19 +1,20 @@
 import _ from 'lodash'
+import Q from './q'
+import { notThisRecord, violatesUnique } from './filter'
 
-export default function update (type) {
-  let backend = this
+export default function update (backend, type) {
   return function (source, args, context = {}, info) {
-
-    let { r, connection, util, q } = backend
-    let { collection, store, before } = backend.getTypeInfo(type, info)
-    let table = r.db(store).table(collection)
+    let { r, connection } = backend
+    let q = Q(backend)
+    let { before } = backend.getTypeInfo(type, info)
+    let table = backend.getCollection(type)
     let id = backend.getPrimaryFromArgs(type, args)
-    let beforeHook = _.get(before, `update${type}`)
+    let beforeHook = _.get(before, `backend_update${type}`)
 
     // main query
     let query = () => {
-      let notThis = backend.filter.notThisRecord(type, backend, args, table)
-      return backend.filter.violatesUnique(type, backend, args, notThis)
+      let notThis = notThisRecord(backend, type, args, table)
+      return violatesUnique(backend, type, args, notThis)
         .branch(
           r.error('unique field violation'),
           q.type(type)
@@ -26,7 +27,7 @@ export default function update (type) {
 
     // run before stub
     let resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info)
-    if (util.isPromise(resolveBefore)) return resolveBefore.then(query)
+    if (_.isPromise(resolveBefore)) return resolveBefore.then(query)
     return query()
   }
 }
