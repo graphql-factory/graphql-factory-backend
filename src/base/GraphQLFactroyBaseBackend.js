@@ -8,7 +8,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
     super()
 
     let { extension, plugin, options, methods, globals, fields, functions, types, externalTypes } = config
-    let { store, prefix } = options || {}
+    let { prefix } = options || {}
 
     // check for required properties
     if (!_.isString(namespace)) throw new Error('a namespace is required')
@@ -33,7 +33,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
     this._namespace = namespace
     this._prefix = _.isString(prefix) ? prefix : ''
     this._options = options || {}
-    this._defaultStore = store || this._defaultStore || 'test'
+    this._defaultStore = _.get(config, 'options.store', 'test')
     this._installData = {}
     this._queries = {}
     this._lib = null
@@ -135,7 +135,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
   }
 
   getRelations (type, info) {
-    let relations = this.getTypeRelatins(type)
+    let relations = this.getTypeRelations(type)
     let parentType = this.getParentType(info)
     let cpath = this.getCurrentPath(info)
     let belongsTo = _.get(relations, `belongsTo["${parentType.name}"]["${cpath}"]`, {})
@@ -161,13 +161,15 @@ export default class GraphQLFactoryBaseBackend extends Events {
 
   getTypeInfo (type, info) {
     let typeDef = this.getTypeDefinition(type)
-    let { primary, primaryKey, collection, store, before } = this.getTypeComputed(type)
+    let { primary, primaryKey, collection, store, before, after, timeout } = this.getTypeComputed(type)
     let nested = this.isNested(info)
     let currentPath = this.getCurrentPath(info)
     let { belongsTo, has } = this.getRelations(type, info)
     return {
       [this._extension]: typeDef[this._extension],
       before,
+      after,
+      timeout,
       collection,
       store,
       fields: typeDef.fields,

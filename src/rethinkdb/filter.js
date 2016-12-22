@@ -1,4 +1,11 @@
 import _ from 'lodash'
+import Bluebird from 'bluebird'
+
+export function isPromise (obj) {
+  if (obj instanceof Promise || obj instanceof Bluebird) return true
+  if (_.isFunction(_.get(obj, 'then')) && _.isFunction(_.get(obj, 'catch'))) return true
+  return false
+}
 
 // gets relationships defined in the type definition and also
 export function getRelationFilter (backend, type, source, info, filter) {

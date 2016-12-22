@@ -115,6 +115,7 @@ var FLOAT = 'Float';
 var BOOLEAN = 'Boolean';
 var ID = 'ID';
 var INPUT = 'Input';
+var OBJECT = 'Object';
 var ENUM = 'Enum';
 var PRIMITIVES = [STRING, INT, FLOAT, BOOLEAN, ID];
 
@@ -170,8 +171,12 @@ function computeUniques(fields) {
   return _.uniq(uniques);
 }
 
-function defaultBefore() {
-  return Promise.resolve();
+function defaultBefore(args, backend, done) {
+  return done();
+}
+
+function defaultAfter(result, args, backend, done) {
+  return done(null, result);
 }
 
 /*
@@ -206,6 +211,11 @@ var GraphQLFactoryBackendCompiler = function () {
       var _this = this;
 
       _.forEach(this.definition.types, function (definition) {
+        if (definition.type && definition.type !== OBJECT) {
+          delete definition[_this.extension];
+          return;
+        }
+
         var fields = _.get(definition, 'fields', {});
         var ext = _.get(definition, '["' + _this.extension + '"]', {});
         var schema = ext.schema,
@@ -234,6 +244,7 @@ var GraphQLFactoryBackendCompiler = function () {
         // get the uniques
         computed.uniques = computeUniques(fields);
         computed.before = {};
+        computed.after = {};
       });
 
       // support chaining
@@ -265,7 +276,8 @@ var GraphQLFactoryBackendCompiler = function () {
             var type = opDef.type,
                 args = opDef.args,
                 resolve = opDef.resolve,
-                before = opDef.before;
+                before = opDef.before,
+                after = opDef.after;
 
             var fieldName = name === READ ? '' + name + typeName : name;
             var resolveName = _.isString(resolve) ? resolve : 'backend_' + fieldName;
@@ -282,9 +294,13 @@ var GraphQLFactoryBackendCompiler = function () {
               _.set(_this2.definition, 'functions.' + resolveName, resolve);
             }
 
-            // check for before stub
-            before = _.isFunction(before) ? before.bind(_this2) : defaultBefore;
+            // check for before hook
+            before = _.isFunction(before) ? before : defaultBefore;
             _.set(_backend, 'computed.before["' + resolveName + '"]', before);
+
+            // check for after hook
+            after = _.isFunction(after) ? after : defaultAfter;
+            _.set(_backend, 'computed.after["' + resolveName + '"]', after);
           });
         });
       });
@@ -320,14 +336,15 @@ var GraphQLFactoryBackendCompiler = function () {
             var type = opDef.type,
                 args = opDef.args,
                 resolve = opDef.resolve,
-                before = opDef.before;
+                before = opDef.before,
+                after = opDef.after;
 
             var ops = [CREATE, UPDATE, DELETE];
             var fieldName = _.includes(ops, name) ? '' + name + typeName : name;
             var resolveName = _.isString(resolve) ? resolve : 'backend_' + fieldName;
 
             _.set(_this3.definition.types, '["' + objName + '"].fields["' + fieldName + '"]', {
-              type: name === DELETE ? BOOLEAN : type || [typeName],
+              type: name === DELETE ? BOOLEAN : type || typeName,
               args: args || _this3.buildArgs(definition, MUTATION, typeName),
               resolve: resolveName
             });
@@ -338,9 +355,13 @@ var GraphQLFactoryBackendCompiler = function () {
               _.set(_this3.definition, 'functions.' + resolveName, resolve);
             }
 
-            // check for before stub
-            before = _.isFunction(before) ? before.bind(_this3) : defaultBefore;
+            // check for before hook
+            before = _.isFunction(before) ? before : defaultBefore;
             _.set(_backend, 'computed.before["' + resolveName + '"]', before);
+
+            // check for after hook
+            after = _.isFunction(after) ? after : defaultAfter;
+            _.set(_backend, 'computed.after["' + resolveName + '"]', after);
           });
         });
       });
@@ -412,7 +433,7 @@ var GraphQLFactoryBackendCompiler = function () {
 
           if (name && _.isArray(fieldType) && fieldType.length === 1 && fieldDef.args === undefined) {
             var type = _.get(fieldType, '[0]');
-            var field = _.get(_this5._definition.types, '["' + name + '"].fields["read' + type + '"]', {});
+            var field = _.get(_this5.definition.types, '["' + name + '"].fields["read' + type + '"]', {});
 
             if (field.resolve === 'read' + type && _.isObject(field.args)) {
               _.set(_this5.definition.types, '["' + typeName + '"].fields["' + fieldName + '"].args', field.args);
@@ -446,13 +467,14 @@ var GraphQLFactoryBackendCompiler = function () {
         var typeName = getTypeName(type);
         var typeDef = _.get(_this6.definition.types, '["' + typeName + '"]', {});
         fieldDef = fields[fieldName] = makeFieldDef(fieldDef);
+        var nullable = operation === MUTATION ? fieldDef.nullable : true;
 
         // support protected fields which get removed from the args build
         if (fieldDef.protect === true && operation === MUTATION) return;
 
         // primitives get added automatically
         if (isPrimitive(type)) {
-          args[fieldName] = { type: type };
+          args[fieldName] = { type: type, nullable: nullable };
         } else {
           var typeBackend = _.get(_this6.definition.types, '["' + typeName + '"]["' + _this6.extension + '"]');
 
@@ -461,23 +483,26 @@ var GraphQLFactoryBackendCompiler = function () {
           } else {
             // add args for related types
             if (fieldDef.belongsTo) {
-              args[fieldName] = { type: 'String' };
+              args[fieldName] = { type: 'String', nullable: nullable };
             } else if (fieldDef.has) {
-              args[fieldName] = _.isArray(fieldDef.type) ? ['String'] : 'String';
+              args[fieldName] = { type: _.isArray(fieldDef.type) ? ['String'] : 'String', nullable: nullable };
             } else {
               // look for an input type
-              if (operation === MUTATION && typeDef.type !== ENUM) {
-                // for mutations with objects for args, make sure the object is an input type or do not
-                // allow it as an argument
+              if (typeDef.type !== ENUM) {
                 if (typeDef.type === INPUT) {
-                  args[fieldName] = { type: type };
+                  args[fieldName] = { type: type, nullable: nullable };
                 } else {
                   var inputName = '' + typeName + INPUT;
                   var inputMatch = _.get(_this6.definition.types, '["' + inputName + '"]', {});
-                  if (inputMatch.type === INPUT) args[fieldName] = { type: _.isArray(type) ? [inputName] : inputName };else console.warn('[backend warning]: calculation of type "' + rootName + '" argument "' + fieldName + '" could not find and input type and will not be added. please create type "' + inputName + '"');
+
+                  if (inputMatch.type === INPUT) {
+                    args[fieldName] = { type: _.isArray(type) ? [inputName] : inputName, nullable: nullable };
+                  } else {
+                    console.warn('[backend warning]: calculation of type "' + rootName + '" argument "' + fieldName + '" could not find and input type and will not be added. please create type "' + inputName + '"');
+                  }
                 }
               } else {
-                args[fieldName] = { type: type };
+                args[fieldName] = { type: type, nullable: nullable };
               }
             }
           }
@@ -511,7 +536,6 @@ var GraphQLFactoryBaseBackend = function (_Events) {
         externalTypes = config.externalTypes;
 
     var _ref = options || {},
-        store = _ref.store,
         prefix = _ref.prefix;
 
     // check for required properties
@@ -539,7 +563,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     _this._namespace = namespace;
     _this._prefix = _.isString(prefix) ? prefix : '';
     _this._options = options || {};
-    _this._defaultStore = store || _this._defaultStore || 'test';
+    _this._defaultStore = _.get(config, 'options.store', 'test');
     _this._installData = {};
     _this._queries = {};
     _this._lib = null;
@@ -683,7 +707,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
   }, {
     key: 'getRelations',
     value: function getRelations(type, info) {
-      var relations = this.getTypeRelatins(type);
+      var relations = this.getTypeRelations(type);
       var parentType = this.getParentType(info);
       var cpath = this.getCurrentPath(info);
       var belongsTo = _.get(relations, 'belongsTo["' + parentType.name + '"]["' + cpath + '"]', {});
@@ -722,7 +746,9 @@ var GraphQLFactoryBaseBackend = function (_Events) {
           primaryKey = _getTypeComputed2.primaryKey,
           collection = _getTypeComputed2.collection,
           store = _getTypeComputed2.store,
-          before = _getTypeComputed2.before;
+          before = _getTypeComputed2.before,
+          after = _getTypeComputed2.after,
+          timeout = _getTypeComputed2.timeout;
 
       var nested = this.isNested(info);
       var currentPath = this.getCurrentPath(info);
@@ -731,7 +757,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
           belongsTo = _getRelations.belongsTo,
           has = _getRelations.has;
 
-      return _ref2 = {}, defineProperty(_ref2, this._extension, typeDef[this._extension]), defineProperty(_ref2, 'before', before), defineProperty(_ref2, 'collection', collection), defineProperty(_ref2, 'store', store), defineProperty(_ref2, 'fields', typeDef.fields), defineProperty(_ref2, 'primary', primary), defineProperty(_ref2, 'primaryKey', primaryKey), defineProperty(_ref2, 'nested', nested), defineProperty(_ref2, 'currentPath', currentPath), defineProperty(_ref2, 'belongsTo', belongsTo), defineProperty(_ref2, 'has', has), _ref2;
+      return _ref2 = {}, defineProperty(_ref2, this._extension, typeDef[this._extension]), defineProperty(_ref2, 'before', before), defineProperty(_ref2, 'after', after), defineProperty(_ref2, 'timeout', timeout), defineProperty(_ref2, 'collection', collection), defineProperty(_ref2, 'store', store), defineProperty(_ref2, 'fields', typeDef.fields), defineProperty(_ref2, 'primary', primary), defineProperty(_ref2, 'primaryKey', primaryKey), defineProperty(_ref2, 'nested', nested), defineProperty(_ref2, 'currentPath', currentPath), defineProperty(_ref2, 'belongsTo', belongsTo), defineProperty(_ref2, 'has', has), _ref2;
     }
   }, {
     key: 'getRelatedValues',
@@ -866,104 +892,6 @@ var GraphQLFactoryBaseBackend = function (_Events) {
   }]);
   return GraphQLFactoryBaseBackend;
 }(Events);
-
-// gets relationships defined in the type definition and also
-function getRelationFilter(backend, type, source, info, filter) {
-  filter = filter || backend.getCollection(type);
-  var many = true;
-  var r = backend.r;
-
-  var _backend$getTypeInfo = backend.getTypeInfo(type, info),
-      fields = _backend$getTypeInfo.fields,
-      nested = _backend$getTypeInfo.nested,
-      currentPath = _backend$getTypeInfo.currentPath,
-      belongsTo = _backend$getTypeInfo.belongsTo,
-      has = _backend$getTypeInfo.has;
-
-  // check for nested with belongsTo relationship
-
-
-  if (nested && _.has(fields, belongsTo.primary) && _.has(source, belongsTo.foreign)) {
-    many = belongsTo.many;
-    filter = filter.filter(defineProperty({}, belongsTo.primary, source[belongsTo.foreign]));
-  } else if (nested && _.has(fields, has.foreign)) {
-    var _ret = function () {
-      many = has.many;
-
-      // get the source id or ids
-      var hasId = _.get(source, currentPath);
-      hasId = !many && _.isArray(hasId) ? _.get(hasId, '[0]') : hasId;
-      if (!hasId || _.isArray(hasId) && !hasId.length) return {
-          v: { filter: r.expr([]), many: many }
-        };
-
-      // do an array or field search
-      if (many) filter = filter.filter(function (obj) {
-        return r.expr(hasId).contains(obj(has.foreign));
-      });else filter = filter.filter(defineProperty({}, has.foreign, hasId));
-    }();
-
-    if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
-  }
-  return { filter: filter, many: many };
-}
-
-// creates a filter based on the arguments
-function getArgsFilter(backend, type, args, filter) {
-  filter = filter || backend.getCollection(backend);
-  var argKeys = _.keys(args);
-
-  var _backend$getTypeCompu = backend.getTypeComputed(type),
-      primary = _backend$getTypeCompu.primary;
-
-  // check if the primary keys were supplied
-
-
-  if (_.intersection(primary, argKeys).length === argKeys.length && argKeys.length > 0) {
-    var priArgs = backend.getPrimaryFromArgs(type, args);
-    filter = filter.get(priArgs).do(function (result) {
-      return result.eq(null).branch([], [result]);
-    });
-  } else if (argKeys.length) {
-    filter = filter.filter(args);
-  }
-
-  return filter;
-}
-
-// determines unique constraints and if any have been violated
-function violatesUnique(backend, type, args, filter) {
-  filter = filter || backend.getCollection(type);
-  var r = backend.r;
-
-  var unique = backend.getUniqueArgs(type, args);
-
-  if (unique.length) {
-    return filter.filter(function (obj) {
-      return r.expr(unique).prepend(true).reduce(function (prevUniq, uniq) {
-        return prevUniq.and(uniq.prepend(true).reduce(function (prevField, field) {
-          return prevField.and(field('type').eq('String').branch(obj(field('field')).match(r.add('(?i)^', field('value'), '$')), obj(field('field')).eq(field('value'))));
-        }));
-      });
-    }).count().ne(0);
-  }
-  return filter.coerceTo('array').do(function () {
-    return r.expr(false);
-  });
-}
-
-// get records that are not this one from a previous filter
-function notThisRecord(backend, type, args, filter) {
-  filter = filter || backend.getCollection(backend);
-
-  var _backend$getTypeCompu2 = backend.getTypeComputed(type),
-      primaryKey = _backend$getTypeCompu2.primaryKey;
-
-  var id = backend.getPrimaryFromArgs(type, args);
-  return filter.filter(function (obj) {
-    return obj(primaryKey).ne(id);
-  });
-}
 
 var GraphQLFactoryBackendQueryBuilder = function () {
   function GraphQLFactoryBackendQueryBuilder(backend, type) {
@@ -1262,6 +1190,104 @@ var Q = function (backend) {
   return new GraphQLFactoryBackendQueryBuilder(backend);
 };
 
+// gets relationships defined in the type definition and also
+function getRelationFilter(backend, type, source, info, filter) {
+  filter = filter || backend.getCollection(type);
+  var many = true;
+  var r = backend.r;
+
+  var _backend$getTypeInfo = backend.getTypeInfo(type, info),
+      fields = _backend$getTypeInfo.fields,
+      nested = _backend$getTypeInfo.nested,
+      currentPath = _backend$getTypeInfo.currentPath,
+      belongsTo = _backend$getTypeInfo.belongsTo,
+      has = _backend$getTypeInfo.has;
+
+  // check for nested with belongsTo relationship
+
+
+  if (nested && _.has(fields, belongsTo.primary) && _.has(source, belongsTo.foreign)) {
+    many = belongsTo.many;
+    filter = filter.filter(defineProperty({}, belongsTo.primary, source[belongsTo.foreign]));
+  } else if (nested && _.has(fields, has.foreign)) {
+    var _ret = function () {
+      many = has.many;
+
+      // get the source id or ids
+      var hasId = _.get(source, currentPath);
+      hasId = !many && _.isArray(hasId) ? _.get(hasId, '[0]') : hasId;
+      if (!hasId || _.isArray(hasId) && !hasId.length) return {
+          v: { filter: r.expr([]), many: many }
+        };
+
+      // do an array or field search
+      if (many) filter = filter.filter(function (obj) {
+        return r.expr(hasId).contains(obj(has.foreign));
+      });else filter = filter.filter(defineProperty({}, has.foreign, hasId));
+    }();
+
+    if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
+  }
+  return { filter: filter, many: many };
+}
+
+// creates a filter based on the arguments
+function getArgsFilter(backend, type, args, filter) {
+  filter = filter || backend.getCollection(backend);
+  var argKeys = _.keys(args);
+
+  var _backend$getTypeCompu = backend.getTypeComputed(type),
+      primary = _backend$getTypeCompu.primary;
+
+  // check if the primary keys were supplied
+
+
+  if (_.intersection(primary, argKeys).length === argKeys.length && argKeys.length > 0) {
+    var priArgs = backend.getPrimaryFromArgs(type, args);
+    filter = filter.get(priArgs).do(function (result) {
+      return result.eq(null).branch([], [result]);
+    });
+  } else if (argKeys.length) {
+    filter = filter.filter(args);
+  }
+
+  return filter;
+}
+
+// determines unique constraints and if any have been violated
+function violatesUnique(backend, type, args, filter) {
+  filter = filter || backend.getCollection(type);
+  var r = backend.r;
+
+  var unique = backend.getUniqueArgs(type, args);
+
+  if (unique.length) {
+    return filter.filter(function (obj) {
+      return r.expr(unique).prepend(true).reduce(function (prevUniq, uniq) {
+        return prevUniq.and(uniq.prepend(true).reduce(function (prevField, field) {
+          return prevField.and(field('type').eq('String').branch(obj(field('field')).match(r.add('(?i)^', field('value'), '$')), obj(field('field')).eq(field('value'))));
+        }));
+      });
+    }).count().ne(0);
+  }
+  return filter.coerceTo('array').do(function () {
+    return r.expr(false);
+  });
+}
+
+// get records that are not this one from a previous filter
+function notThisRecord(backend, type, args, filter) {
+  filter = filter || backend.getCollection(backend);
+
+  var _backend$getTypeCompu2 = backend.getTypeComputed(type),
+      primaryKey = _backend$getTypeCompu2.primaryKey;
+
+  var id = backend.getPrimaryFromArgs(type, args);
+  return filter.filter(function (obj) {
+    return obj(primaryKey).ne(id);
+  });
+}
+
 function create(backend, type) {
   return function (source, args) {
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
@@ -1269,28 +1295,35 @@ function create(backend, type) {
     var r = backend.r,
         connection = backend.connection;
 
-    var q = Q(backend);
-
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         collection = _backend$getTypeInfo.collection,
         store = _backend$getTypeInfo.store,
-        before = _backend$getTypeInfo.before;
+        before = _backend$getTypeInfo.before,
+        after = _backend$getTypeInfo.after,
+        timeout = _backend$getTypeInfo.timeout;
 
+    var q = Q(backend);
     var table = r.db(store).table(collection);
-    var beforeHook = _.get(before, 'backend_create' + type);
+    var fnPath = 'backend_create' + type;
+    var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+      return done();
+    });
+    var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+      return done(result);
+    });
 
-    // main query
-    var query = function query() {
-      var filter = violatesUnique(backend, type, args, table).branch(r.error('unique field violation'), q.type(type).insert(args, { exists: backend.getRelatedValues(type, args) }).value());
+    return new Promise$1(function (resolve, reject) {
+      return beforeHook({ source: source, args: args, context: context, info: info }, backend, function (err) {
+        if (err) return reject(err);
 
-      // do the update
-      return filter.run(connection);
-    };
-
-    // run before stub
-    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
-    if (_.isPromise(resolveBefore)) return resolveBefore.then(query);
-    return query();
+        return violatesUnique(backend, type, args, table).branch(r.error('unique field violation'), q.type(type).insert(args, { exists: backend.getRelatedValues(type, args) }).value()).run(connection).then(function (result) {
+          return afterHook(result, args, backend, function (err, result) {
+            if (err) return reject(err);
+            return resolve(result);
+          });
+        }).catch(reject);
+      });
+    }).timeout(timeout || 10000);
   };
 }
 
@@ -1304,7 +1337,9 @@ function read(backend, type) {
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         collection = _backend$getTypeInfo.collection,
         store = _backend$getTypeInfo.store,
-        before = _backend$getTypeInfo.before;
+        before = _backend$getTypeInfo.before,
+        after = _backend$getTypeInfo.after,
+        timeout = _backend$getTypeInfo.timeout;
 
     var table = r.db(store).table(collection);
 
@@ -1312,31 +1347,37 @@ function read(backend, type) {
         filter = _getRelationFilter.filter,
         many = _getRelationFilter.many;
 
-    var beforeHook = _.get(before, 'backend_read' + type);
+    var fnPath = 'backend_read' + type;
+    var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+      return done();
+    });
+    var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+      return done(result);
+    });
 
-    // main query
-    var query = function query() {
-      // filter args
-      filter = getArgsFilter(backend, type, args, filter);
+    return new Promise$1(function (resolve, reject) {
+      return beforeHook({ source: source, args: args, context: context, info: info }, backend, function (err) {
+        if (err) return reject(err);
 
-      // add standard query modifiers
-      if (_.isNumber(args.limit)) filter = filter.limit(args.limit);
+        filter = getArgsFilter(backend, type, args, filter);
 
-      // if not a many relation, return only a single result or null
-      if (!many) {
-        filter = filter.coerceTo('array').do(function (objs) {
-          return objs.count().eq(0).branch(r.expr(null), r.expr(objs).nth(0));
-        });
-      }
+        // add standard query modifiers
+        if (_.isNumber(args.limit)) filter = filter.limit(args.limit);
 
-      // run the query
-      return filter.run(connection);
-    };
-
-    // run before stub
-    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
-    if (_.isPromise(resolveBefore)) return resolveBefore.then(query);
-    return query();
+        // if not a many relation, return only a single result or null
+        if (!many) {
+          filter = filter.coerceTo('array').do(function (objs) {
+            return objs.count().eq(0).branch(r.expr(null), r.expr(objs).nth(0));
+          });
+        }
+        return filter.run(connection).then(function (result) {
+          return afterHook(result, args, backend, function (err, result) {
+            if (err) return reject(err);
+            return resolve(result);
+          });
+        }).catch(reject);
+      });
+    }).timeout(timeout || 10000);
   };
 }
 
@@ -1347,27 +1388,37 @@ function update$1(backend, type) {
     var r = backend.r,
         connection = backend.connection;
 
-    var q = Q(backend);
-
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
-        before = _backend$getTypeInfo.before;
+        before = _backend$getTypeInfo.before,
+        after = _backend$getTypeInfo.after,
+        timeout = _backend$getTypeInfo.timeout;
 
+    var q = Q(backend);
     var table = backend.getCollection(type);
     var id = backend.getPrimaryFromArgs(type, args);
-    var beforeHook = _.get(before, 'backend_update' + type);
+    var fnPath = 'backend_update' + type;
+    var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+      return done();
+    });
+    var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+      return done(result);
+    });
 
-    // main query
-    var query = function query() {
-      var notThis = notThisRecord(backend, type, args, table);
-      return violatesUnique(backend, type, args, notThis).branch(r.error('unique field violation'), q.type(type).update(args, { exists: backend.getRelatedValues(type, args) }).do(function () {
-        return q.type(type).get(id).value();
-      }).value()).run(connection);
-    };
+    return new Promise$1(function (resolve, reject) {
+      return beforeHook({ source: source, args: args, context: context, info: info }, backend, function (err) {
+        if (err) return reject(err);
 
-    // run before stub
-    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
-    if (_.isPromise(resolveBefore)) return resolveBefore.then(query);
-    return query();
+        var notThis = notThisRecord(backend, type, args, table);
+        return violatesUnique(backend, type, args, notThis).branch(r.error('unique field violation'), q.type(type).update(args, { exists: backend.getRelatedValues(type, args) }).do(function () {
+          return q.type(type).get(id).value();
+        }).value()).run(connection).then(function (result) {
+          return afterHook(result, args, backend, function (err, result) {
+            if (err) return reject(err);
+            return resolve(result);
+          });
+        }).catch(reject);
+      });
+    }).timeout(timeout || 10000);
   };
 }
 
@@ -1375,21 +1426,34 @@ function del(backend, type) {
   return function (source, args) {
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
-
-    var q = Q(backend);
+    var connection = backend.connection;
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
-        before = _backend$getTypeInfo.before;
+        before = _backend$getTypeInfo.before,
+        after = _backend$getTypeInfo.after,
+        timeout = _backend$getTypeInfo.timeout;
 
-    var beforeHook = _.get(before, 'backend_delete' + type);
-    var query = function query() {
-      return q.type(type).delete(args).run();
-    };
+    var q = Q(backend);
+    var fnPath = 'backend_delete' + type;
+    var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+      return done();
+    });
+    var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+      return done(result);
+    });
 
-    // run before stub
-    var resolveBefore = beforeHook(source, args, _.merge({}, { factory: this }, context), info);
-    if (_.isPromise(resolveBefore)) return resolveBefore.then(query);
-    return query();
+    return new Promise$1(function (resolve, reject) {
+      return beforeHook({ source: source, args: args, context: context, info: info }, backend, function (err) {
+        if (err) return reject(err);
+
+        return q.type(type).delete(args).run(connection).then(function (result) {
+          return afterHook(result, args, backend, function (err, result) {
+            if (err) return reject(err);
+            return resolve(result);
+          });
+        }).catch(reject);
+      });
+    }).timeout(timeout || 10000);
   };
 }
 
@@ -1459,7 +1523,7 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
     // store database objects
     _this.r = r;
     _this._connection = connection;
-    _this._defaultStore = 'test';
+    _this._defaultStore = _.get(config, 'options.store', 'test');
 
     // add values to the globals namespace
     _.merge(_this.definition.globals, defineProperty({}, namespace, { r: r, connection: connection }));
