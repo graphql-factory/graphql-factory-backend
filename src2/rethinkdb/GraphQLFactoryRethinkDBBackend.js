@@ -1,15 +1,20 @@
 import _ from 'lodash'
+import createResolver from './create'
+import readResolver from './read'
+import updateResolver from './update'
+import deleteResolver from './delete'
+import initStore from './initStore'
 import GraphQLFactoryBaseBackend from '../base/GraphQLFactroyBaseBackend'
 
 // extended backend class for RethinkDB
 export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBackend {
   constructor (namespace, graphql, factory, r, config, connection) {
     super(namespace, graphql, factory, config, {
-      create: () => true,
-      read: () => true,
-      update: () => true,
-      delete: () => true
-    }, () => true)
+      create: createResolver,
+      read: readResolver,
+      update: updateResolver,
+      delete: deleteResolver
+    }, initStore)
 
     this.type = 'GraphQLFactoryRethinkDBBackend'
 

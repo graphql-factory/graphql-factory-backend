@@ -8,6 +8,11 @@ function makeObjectName (schema, op) {
   return `backend${_.capitalize(schema)}${_.capitalize(op)}`
 }
 
+function getPrimary (fields) {
+  let primary = _(fields).pick((v) => v.primary === true).keys().value()
+  return !primary.length ? null : primary.length === 1 ? primary[0] : primary
+}
+
 function getTypeName (type) {
   return _.isArray(type) ? _.first(type) : type
 }
@@ -62,6 +67,7 @@ export default class GraphQLFactoryBackendCompiler {
       .buildQueries()
       .buildMutations()
       .buildRelations()
+      .setListArgs()
       .value()
   }
 
@@ -87,18 +93,18 @@ export default class GraphQLFactoryBackendCompiler {
       computed.queries = _.map(computed.schemas, (schema) => {
         return {
           schema,
-          name: `backend${_.capitalize(schema)}Query`
+          name: makeObjectName(schema, QUERY)
         }
       })
       computed.mutations = _.map(computed.schemas, (schema) => {
         return {
           schema,
-          name: `backend${_.capitalize(schema)}Mutation`
+          name: makeObjectName(schema, MUTATION)
         }
       })
 
       // get the primary key name
-      let primary = computed.primary = this.getPrimary(fields)
+      let primary = computed.primary = getPrimary(fields)
       computed.primaryKey = ext.primaryKey || _.isArray(primary) ? _.camelCase(primary.join('-')) : primary
 
       // get the uniques
@@ -182,7 +188,7 @@ export default class GraphQLFactoryBackendCompiler {
           })
 
           if (opDef === true || !resolve) {
-            _.set(this.definition, `functions.${fieldName}`, this.readResolver(typeName))
+            _.set(this.definition, `functions.${fieldName}`, this[`${name}Resolver`](typeName))
           } else if (_.isFunction(resolve)) {
             _.set(this.definition, `functions.${fieldName}`, resolve)
           }
@@ -234,6 +240,27 @@ export default class GraphQLFactoryBackendCompiler {
             foreign: has,
             many: _.isArray(type)
           })
+        }
+      })
+    })
+
+    // support chaining
+    return this
+  }
+
+  setListArgs () {
+    _.forEach(this.definition.types, (typeDef, typeName) => {
+      let { name } = _.get(typeDef, `["${this.backend._extension}"].computed.queries[0]`, {})
+      _.forEach(typeDef.fields, (fieldDef, fieldName) => {
+        let fieldType = getType(fieldDef)
+
+        if (name && _.isArray(fieldType) && fieldType.length === 1 && fieldDef.args === undefined) {
+          let type = _.get(fieldType, '[0]')
+          let field = _.get(this._definition.types, `["${name}"].fields["read${type}"]`, {})
+
+          if (field.resolve === `read${type}` && _.isObject(field.args)) {
+            _.set(this.definition.types, `["${typeName}"].fields["${fieldName}"].args`, field.args)
+          }
         }
       })
     })

@@ -28,7 +28,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
 
     // set non-overridable properties
     this._crud = crud
-    this._installer = installer
+    this._installer = installer.bind(this)
     this._extension = extension || '_backend'
     this._namespace = namespace
     this._prefix = prefix || ''
@@ -38,12 +38,8 @@ export default class GraphQLFactoryBaseBackend extends Events {
     this._queries = {}
     this._lib = null
     this._plugin = null
-  }
 
-  /******************************************************************
-   * Compile methods
-   ******************************************************************/
-  make () {
+    // make the backend definition
     let compiler = new GraphQLFactoryBackendCompiler(this)
     compiler.compile()
   }
@@ -82,15 +78,15 @@ export default class GraphQLFactoryBaseBackend extends Events {
    * Utility methods
    ******************************************************************/
   addExternalType (type, name) {
-    if (_.isString(name) && _.isObject(type)) _.set(this._definition.externalTypes, name, type)
+    if (_.isString(name) && _.isObject(type)) _.set(this.definition.externalTypes, name, type)
   }
 
   addField (def, name) {
-    if (_.isString(name) && _.isObject(def)) _.set(this._definition.fields, name, def)
+    if (_.isString(name) && _.isObject(def)) _.set(this.definition.fields, name, def)
   }
 
   addFunction (fn, name) {
-    if (_.isString(name) && _.isFunction(fn)) _.set(this._definition.functions, name, fn(this))
+    if (_.isString(name) && _.isFunction(fn)) _.set(this.definition.functions, name, fn(this))
   }
 
   addFunctions (functions) {
@@ -98,7 +94,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
   }
 
   addGlobal (obj, path) {
-    if (_.isString(path) && obj) _.set(this._definition.globals, path, obj)
+    if (_.isString(path) && obj) _.set(this.definition.globals, path, obj)
   }
 
   addInstallData (data) {
