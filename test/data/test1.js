@@ -1,5 +1,4 @@
 import _ from 'lodash'
-import { defaultBefore } from '../../src/base/GraphQLFactoryBackendCompiler'
 
 export default {
   definition: {
@@ -327,7 +326,9 @@ export default {
                 "name": {
                   "type": "String"
                 },
-                "address": "AddressInput"
+                "address": {
+                  "type": "AddressInput"
+                }
               },
               "resolve": "backend_createPerson"
             },
@@ -342,7 +343,9 @@ export default {
                 "name": {
                   "type": "String"
                 },
-                "address": "AddressInput"
+                "address": {
+                  "type": "AddressInput"
+                }
               },
               "resolve": "backend_updatePerson"
             },
@@ -355,7 +358,9 @@ export default {
                 "name": {
                   "type": "String"
                 },
-                "address": "AddressInput"
+                "address": {
+                  "type": "AddressInput"
+                }
               },
               "resolve": "backend_deletePerson"
             },
@@ -423,7 +428,9 @@ export default {
                 "name": {
                   "type": "String"
                 },
-                "address": "AddressInput"
+                "address": {
+                  "type": "AddressInput"
+                }
               },
               "resolve": "backend_createPerson"
             },
@@ -438,7 +445,9 @@ export default {
                 "name": {
                   "type": "String"
                 },
-                "address": "AddressInput"
+                "address": {
+                  "type": "AddressInput"
+                }
               },
               "resolve": "backend_updatePerson"
             },
@@ -451,7 +460,9 @@ export default {
                 "name": {
                   "type": "String"
                 },
-                "address": "AddressInput"
+                "address": {
+                  "type": "AddressInput"
+                }
               },
               "resolve": "backend_deletePerson"
             }

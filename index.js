@@ -447,6 +447,10 @@ var GraphQLFactoryBackendCompiler = function () {
         var typeDef = _.get(_this6.definition.types, '["' + typeName + '"]', {});
         fieldDef = fields[fieldName] = makeFieldDef(fieldDef);
 
+        // support protected fields which get removed from the args build
+        if (fieldDef.protect === true && operation === MUTATION) return;
+
+        // primitives get added automatically
         if (isPrimitive(type)) {
           args[fieldName] = { type: type };
         } else {
@@ -470,7 +474,7 @@ var GraphQLFactoryBackendCompiler = function () {
                 } else {
                   var inputName = '' + typeName + INPUT;
                   var inputMatch = _.get(_this6.definition.types, '["' + inputName + '"]', {});
-                  if (inputMatch.type === INPUT) args[fieldName] = _.isArray(type) ? [inputName] : inputName;else console.warn('[backend warning]: calculation of type "' + rootName + '" argument "' + fieldName + '" could not find and input type and will not be added. please create type "' + inputName + '"');
+                  if (inputMatch.type === INPUT) args[fieldName] = { type: _.isArray(type) ? [inputName] : inputName };else console.warn('[backend warning]: calculation of type "' + rootName + '" argument "' + fieldName + '" could not find and input type and will not be added. please create type "' + inputName + '"');
                 }
               } else {
                 args[fieldName] = { type: type };

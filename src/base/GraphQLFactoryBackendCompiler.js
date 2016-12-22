@@ -298,6 +298,10 @@ export default class GraphQLFactoryBackendCompiler {
       let typeDef = _.get(this.definition.types, `["${typeName}"]`, {})
       fieldDef = fields[fieldName] = makeFieldDef(fieldDef)
 
+      // support protected fields which get removed from the args build
+      if (fieldDef.protect === true && operation === MUTATION) return
+
+      // primitives get added automatically
       if (isPrimitive(type)) {
         args[fieldName] = { type }
       } else {
@@ -321,7 +325,7 @@ export default class GraphQLFactoryBackendCompiler {
               } else {
                 let inputName = `${typeName}${INPUT}`
                 let inputMatch = _.get(this.definition.types, `["${inputName}"]`, {})
-                if (inputMatch.type === INPUT) args[fieldName] = _.isArray(type) ? [inputName] : inputName
+                if (inputMatch.type === INPUT) args[fieldName] = { type: _.isArray(type) ? [inputName] : inputName }
                 else console.warn('[backend warning]: calculation of type "' + rootName + '" argument "' + fieldName +
                   '" could not find and input type and will not be added. please create type "' + inputName + '"')
               }
