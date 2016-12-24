@@ -68,6 +68,14 @@ export default class GraphQLFactoryBaseBackend extends Events {
   /******************************************************************
    * Methods that should be overriden when extended
    ******************************************************************/
+  now (callback) {
+    return new Promise((resolve) => {
+      let d = new Date()
+      callback(null, d)
+      return resolve(d)
+    })
+  }
+
   getStore (type) {
     return _.get(this.getTypeComputed(type), 'store')
   }

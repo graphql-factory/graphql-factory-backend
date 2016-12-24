@@ -33,6 +33,21 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
     this.make()
   }
 
+  now (callback) {
+    return new Promise((resolve, reject) => {
+      return this.r.now()
+        .run(this._connection)
+        .then((d) => {
+          callback(null, d)
+          return resolve(d)
+        })
+        .catch((err) => {
+          callback(err)
+          return reject(err)
+        })
+    })
+  }
+
   getStore (type) {
     let { store } = this.getTypeComputed(type)
     return this.r.db(store)

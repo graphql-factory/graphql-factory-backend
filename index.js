@@ -609,6 +609,15 @@ var GraphQLFactoryBaseBackend = function (_Events) {
      ******************************************************************/
 
   }, {
+    key: 'now',
+    value: function now(callback) {
+      return new Promise$1(function (resolve) {
+        var d = new Date();
+        callback(null, d);
+        return resolve(d);
+      });
+    }
+  }, {
     key: 'getStore',
     value: function getStore(type) {
       return _.get(this.getTypeComputed(type), 'store');
@@ -1534,6 +1543,21 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
   }
 
   createClass(GraphQLFactoryRethinkDBBackend, [{
+    key: 'now',
+    value: function now(callback) {
+      var _this2 = this;
+
+      return new Promise(function (resolve, reject) {
+        return _this2.r.now().run(_this2._connection).then(function (d) {
+          callback(null, d);
+          return resolve(d);
+        }).catch(function (err) {
+          callback(err);
+          return reject(err);
+        });
+      });
+    }
+  }, {
     key: 'getStore',
     value: function getStore(type) {
       var _getTypeComputed = this.getTypeComputed(type),
