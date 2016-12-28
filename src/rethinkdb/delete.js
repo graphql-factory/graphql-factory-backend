@@ -12,13 +12,13 @@ export default function del (backend, type) {
     let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(result))
 
     return new Promise((resolve, reject) => {
-      return beforeHook({ source, args, context, info }, backend, (err) => {
+      return beforeHook.call(this, { source, args, context, info }, backend, (err) => {
         if (err) return reject(err)
 
         return q.type(type).delete(args)
           .run(connection)
           .then((result) => {
-            return afterHook(result, args, backend, (err, result) => {
+            return afterHook.call(this, result, args, backend, (err, result) => {
               if (err) return reject(err)
               return resolve(result)
             })

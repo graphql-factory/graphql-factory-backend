@@ -4,10 +4,11 @@ import Events from 'events'
 import GraphQLFactoryBackendCompiler from './GraphQLFactoryBackendCompiler'
 
 export default class GraphQLFactoryBaseBackend extends Events {
-  constructor (namespace, graphql, factory, config = {}, crud = {}, installer) {
+  constructor (namespace, graphql, factory, config = {}) {
     super()
 
-    let { extension, plugin, options, methods, globals, fields, functions, types, externalTypes } = config
+    let { name, extension, plugin, options, methods, globals, fields, functions, types, externalTypes } = config
+    let { temporalExtension } = config
     let { prefix } = options || {}
 
     // check for required properties
@@ -15,21 +16,20 @@ export default class GraphQLFactoryBaseBackend extends Events {
     if (!graphql) throw new Error('an instance of graphql is required')
     if (!factory) throw new Error('an instance of graphql-factory is required')
     if (!_.isObject(types)) throw new Error('no types were found in the configuration')
-    if (!crud.create || !crud.read || !crud.update || !crud.delete) throw new Error('missing CRUD operation')
 
     // set props
     this.type = 'GraphQLFactoryBaseBackend'
     this.graphql = graphql
     this.factory = factory(graphql)
+    this.name = name || 'GraphQLFactoryBackend'
 
     // create a definition
     this.definition = new factory.GraphQLFactoryDefinition(config, { plugin })
     this.definition.merge({ globals: { [namespace]: config } })
 
     // set non-overridable properties
-    this._crud = crud
-    this._installer = installer.bind(this)
     this._extension = extension || '_backend'
+    this._temporalExtension = temporalExtension || '_temporal'
     this._namespace = namespace
     this._prefix = _.isString(prefix) ? prefix : ''
     this._options = options || {}
@@ -47,41 +47,38 @@ export default class GraphQLFactoryBaseBackend extends Events {
   }
 
   /******************************************************************
-   * Resolvers methods
-   ******************************************************************/
-  createResolver (type) {
-    return this._crud.create(this, type)
-  }
-
-  readResolver (type) {
-    return this._crud.read(this, type)
-  }
-
-  updateResolver (type) {
-    return this._crud.update(this, type)
-  }
-
-  deleteResolver (type) {
-    return this._crud.delete(this, type)
-  }
-
-  /******************************************************************
    * Methods that should be overriden when extended
    ******************************************************************/
   now (callback) {
-    return new Promise((resolve) => {
-      let d = new Date()
-      callback(null, d)
-      return resolve(d)
-    })
+    throw new Error('the now method has not been overriden on the backend')
   }
 
-  getStore (type) {
-    return _.get(this.getTypeComputed(type), 'store')
+  createResolver () {
+    throw new Error('the createResolver method has not been overriden on the backend')
   }
 
-  getCollection (type) {
-    return _.get(this.getTypeComputed(type), 'collection')
+  readResolver () {
+    throw new Error('the readResolver method has not been overriden on the backend')
+  }
+
+  updateResolver () {
+    throw new Error('the updateResolver method has not been overriden on the backend')
+  }
+
+  deleteResolver () {
+    throw new Error('the deleteResolver method has not been overriden on the backend')
+  }
+
+  getStore () {
+    throw new Error('the getStore method has not been overriden on the backend')
+  }
+
+  getCollection () {
+    throw new Error('the getCollection method has not been overriden on the backend')
+  }
+
+  initStore () {
+    throw new Error('the initStore method has not been overriden on the backend')
   }
 
   /******************************************************************
@@ -275,7 +272,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
       this.definition.types = _.mapValues(this.definition.types, (definition) => {
         return definition.type === 'Object' ? definition : _.omit(definition, this._extension)
       })
-      this._plugin = this.definition.plugin
+      this._plugin = _.merge({}, this.definition.plugin, { name: this.name })
     }
     return this._plugin
   }

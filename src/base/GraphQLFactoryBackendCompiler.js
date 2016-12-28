@@ -16,7 +16,6 @@ export const OBJECT = 'Object'
 export const ENUM = 'Enum'
 export const PRIMITIVES = [STRING, INT, FLOAT, BOOLEAN, ID]
 
-
 function makeObjectName (schema, op) {
   return `backend${_.capitalize(schema)}${_.capitalize(op)}`
 }
@@ -61,16 +60,8 @@ function computeUniques (fields) {
       else mixed[fieldDef.uniqueWith].push({ field, type })
     }
   })
-  _.forEach(mixed, (compound) => uniques.push(compound))
+  _.forEach(mixed, (compound) => uniques.push(_.sortBy(compound, ['field'])))
   return _.uniq(uniques)
-}
-
-export function defaultBefore (args, backend, done) {
-  return done()
-}
-
-export function defaultAfter (result, args, backend, done) {
-  return done(null, result)
 }
 
 /*
@@ -80,14 +71,21 @@ export default class GraphQLFactoryBackendCompiler {
   constructor (backend) {
     this.backend = backend
     this.defaultStore = backend._defaultStore
+    this.temporalExtension = backend._temporalExtension
     this.extension = backend._extension
     this.prefix = _.isString(backend._prefix) ? backend._prefix : ''
     this.definition = backend.definition
+  }
+
+  compileDefinition () {
     this.definition.compile()
+    return this
   }
 
   compile () {
-    return this.computeExtension()
+    return this.extendTemporal()
+      .compileDefinition()
+      .computeExtension()
       .buildQueries()
       .buildMutations()
       .buildRelations()
@@ -97,6 +95,99 @@ export default class GraphQLFactoryBackendCompiler {
 
   value () {
     return this.definition
+  }
+
+  extendTemporal () {
+    if (this.definition.hasPlugin('GraphQLFactoryTemporal')) {
+      _.forEach(this.definition.types, (typeDef, typeName) => {
+        let { versioned, fork, branch, publish } = _.get(typeDef, `["${this.temporalExtension}"]`, {})
+
+        if (versioned === true) {
+          // extend the temporal fields
+          typeDef.extendFields = typeDef.extendFields || []
+          typeDef.extendFields = _.isArray(typeDef.extendFields)
+            ? typeDef.extendFields
+            : [typeDef.extendFields]
+          typeDef.extendFields = _.union(typeDef.extendFields, ['TemporalType'])
+
+          // add version mutations
+          if (fork !== false) {
+            if (_.isString(fork)) {
+              let forkFn = _.get(this.definition.functions, `["${fork}"]`)
+              if (!_.isFunction(forkFn)) throw new Error(`cannot find function "${fork}"`)
+              fork = forkFn
+            } else if (fork === true || fork === undefined) {
+              fork = `forkTemporal${typeName}`
+            } else if (_.isFunction(fork)) {
+              fork = fork
+            } else {
+              throw new Error('invalid value for fork resolve')
+            }
+
+            _.set(typeDef, `["${this.extension}"].mutation["fork${typeName}"]`, {
+              type: typeName,
+              args: {
+                id: { type: 'String', nullable: 'false' },
+                name: { type: 'String', nullable: 'false' },
+                owner: { type: 'String' },
+                changeLog: { type: 'TemporalChangeLogInput' }
+              },
+              resolve: fork
+            })
+          }
+
+          if (branch !== false) {
+            if (_.isString(branch)) {
+              let branchFn = _.get(this.definition.functions, `["${branch}"]`)
+              if (!_.isFunction(branchFn)) throw new Error(`cannot find function "${branch}"`)
+              branch = branchFn
+            } else if (branch === true || branch === undefined) {
+              branch = `branchTemporal${typeName}`
+            } else if (_.isFunction(branch)) {
+              branch = branch
+            } else {
+              throw new Error('invalid value for branch resolve')
+            }
+
+            _.set(typeDef, `["${this.extension}"].mutation["branch${typeName}"]`, {
+              type: typeName,
+              args: {
+                id: { type: 'String', nullable: 'false' },
+                name: { type: 'String', nullable: 'false' },
+                owner: { type: 'String' },
+                changeLog: { type: 'TemporalChangeLogInput' }
+              },
+              resolve: branch
+            })
+          }
+
+          if (publish !== false) {
+            if (_.isString(publish)) {
+              let publishFn = _.get(this.definition.functions, `["${publish}"]`)
+              if (!_.isFunction(publishFn)) throw new Error(`cannot find function "${publish}"`)
+              publish = publishFn
+            } else if (publish === true || publish === undefined) {
+              publish = `publishTemporal${typeName}`
+            } else if (_.isFunction(publish)) {
+              publish = publish
+            } else {
+              throw new Error('invalid value for publish resolve')
+            }
+
+            _.set(typeDef, `["${this.extension}"].mutation["publish${typeName}"]`, {
+              type: typeName,
+              args: {
+                id: { type: 'String', nullable: 'false' },
+                version: { type: 'String' },
+                changeLog: { type: 'TemporalChangeLogInput' }
+              },
+              resolve: branch
+            })
+          }
+        }
+      })
+    }
+    return this
   }
 
   computeExtension () {
@@ -157,7 +248,7 @@ export default class GraphQLFactoryBackendCompiler {
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
             type: type || [typeName],
-            args: args || this.buildArgs(definition, QUERY, typeName),
+            args: args || this.buildArgs(definition, QUERY, typeName, name),
             resolve: resolveName
           })
 
@@ -167,13 +258,9 @@ export default class GraphQLFactoryBackendCompiler {
             _.set(this.definition, `functions.${resolveName}`, resolve)
           }
 
-          // check for before hook
-          before = _.isFunction(before) ? before : defaultBefore
-          _.set(_backend, `computed.before["${resolveName}"]`, before)
-
-          // check for after hook
-          after = _.isFunction(after) ? after : defaultAfter
-          _.set(_backend, `computed.after["${resolveName}"]`, after)
+          // check for before and after hooks
+          if (_.isFunction(before)) _.set(_backend, `computed.before["${resolveName}"]`, before)
+          if (_.isFunction(after)) _.set(_backend, `computed.after["${resolveName}"]`, after)
         })
       })
     })
@@ -208,7 +295,7 @@ export default class GraphQLFactoryBackendCompiler {
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
             type: name === DELETE ? BOOLEAN : type || typeName,
-            args: args || this.buildArgs(definition, MUTATION, typeName),
+            args: args || this.buildArgs(definition, MUTATION, typeName, name),
             resolve: resolveName
           })
 
@@ -218,13 +305,9 @@ export default class GraphQLFactoryBackendCompiler {
             _.set(this.definition, `functions.${resolveName}`, resolve)
           }
 
-          // check for before hook
-          before = _.isFunction(before) ? before : defaultBefore
-          _.set(_backend, `computed.before["${resolveName}"]`, before)
-
-          // check for after hook
-          after = _.isFunction(after) ? after : defaultAfter
-          _.set(_backend, `computed.after["${resolveName}"]`, after)
+          // check for before and after hooks
+          if (_.isFunction(before)) _.set(_backend, `computed.before["${resolveName}"]`, before)
+          if (_.isFunction(after)) _.set(_backend, `computed.after["${resolveName}"]`, after)
         })
       })
     })
@@ -303,7 +386,11 @@ export default class GraphQLFactoryBackendCompiler {
   /*
    * Helper methods
    */
-  buildArgs (definition, operation, rootName) {
+  isVersioned (typeDef) {
+    return _.get(typeDef, `["${this.backend._temporalExtension}"].versioned`) === true
+  }
+
+  buildArgs (definition, operation, rootName, opName) {
     let args = {}
     let fields = _.get(definition, 'fields', {})
     let _backend = _.get(definition, `["${this.extension}"]`, {})
@@ -358,6 +445,22 @@ export default class GraphQLFactoryBackendCompiler {
         }
       }
     })
+
+    // check for versioned and set version specific args
+    if (this.isVersioned(definition)) {
+      delete args[this.temporalExtension]
+
+      if (operation === QUERY) {
+        args.id = { type: 'String' }
+        args.version = { type: 'String' }
+        args.recordId = { type: 'String' }
+        args.date = { type: 'TemporalDateTime' }
+      } else if (opName === CREATE) {
+        args.useCurrent = { type: 'Boolean', defaultValue: false }
+      } else if (opName === UPDATE) {
+        args.useCurrent = { type: 'Boolean' }
+      }
+    }
     return args
   }
 }
