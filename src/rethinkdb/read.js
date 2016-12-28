@@ -13,10 +13,10 @@ export default function read (backend, type) {
   // field resolve function
   return function (source, args, context = {}, info) {
     let { r, connection, definition } = backend
-    let { collection, store, before, after, timeout } = backend.getTypeInfo(type, info)
-    let table = r.db(store).table(collection)
+    let { before, after, timeout } = backend.getTypeInfo(type, info)
+    let collection = backend.getCollection(type)
 
-    let { filter, many } = getRelationFilter(backend, type, source, info, table)
+    let { filter, many } = getRelationFilter(backend, type, source, info, collection)
     let fnPath = `backend_read${type}`
     let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
     let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(result))
@@ -27,7 +27,8 @@ export default function read (backend, type) {
         if (err) return reject(err)
 
         // handle temporal plugin
-        if (hasTemporalPlugin && isVersioned && temporalDef.read !== false) {
+        if (hasTemporalPlugin && isVersioned) {
+          if (temporalDef.read === false) return reject(new Error('read is not allowed on this temporal type'))
           if (_.isFunction(temporalDef.read)) {
             filter = temporalDef.read.call(this, source, args, context, info)
           } else if (_.isString(temporalDef.read)) {
@@ -37,11 +38,11 @@ export default function read (backend, type) {
             }
             filter = temporalRead.call(this, source, args, context, info)
           } else {
-            let versionFilter = _.get(this, `globals["${temporalExt}"]["filterTemporal${type}"]`)
+            let versionFilter = _.get(this, `globals["${temporalExt}"].temporalFilter`)
             if (!_.isFunction(versionFilter)) {
-              return reject(new Error(`could not find "filterTemporal${type}" in globals`))
+              return reject(new Error(`could not find "temporalFilter" in globals`))
             }
-            filter = versionFilter(args)
+            filter = versionFilter(type, args)
             args = _.omit(args, ['version', 'recordId', 'date', 'id'])
           }
         }

@@ -13,9 +13,9 @@ export default function create (backend, type) {
 
   return function (source, args, context = {}, info) {
     let { r, connection, definition } = backend
-    let { collection, store, before, after, timeout } = backend.getTypeInfo(type, info)
+    let { before, after, timeout } = backend.getTypeInfo(type, info)
     let q = Q(backend)
-    let table = r.db(store).table(collection)
+    let collection = backend.getCollection(type)
     let fnPath = `backend_create${type}`
     let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
     let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(result))
@@ -26,24 +26,25 @@ export default function create (backend, type) {
         let create = null
 
         // handle temporal plugin
-        if (hasTemporalPlugin && isVersioned && temporalDef.create !== false) {
+        if (hasTemporalPlugin && isVersioned) {
+          if (temporalDef.create === false) return reject(new Error('create is not allowed on this temporal type'))
           if (_.isFunction(temporalDef.create)) {
             create = temporalDef.create.call(this, source, args, context, info)
-          } else if (_.isString(temporalDef.read)) {
+          } else if (_.isString(temporalDef.create)) {
             let temporalCreate = _.get(definition, `functions["${temporalDef.create}"]`)
             if (!_.isFunction(temporalCreate)) {
               return reject(new Error(`cannot find function "${temporalDef.create}"`))
             }
             create = temporalCreate.call(this, source, args, context, info)
           } else {
-            let versionCreate = _.get(this, `globals["${temporalExt}"]["createTemporal${type}"]`)
+            let versionCreate = _.get(this, `globals["${temporalExt}"].temporalCreate`)
             if (!_.isFunction(versionCreate)) {
-              return reject(new Error(`could not find "createTemporal${type}" in globals`))
+              return reject(new Error(`could not find "temporalCreate" in globals`))
             }
-            create = versionCreate(args)
+            create = versionCreate(type, args)
           }
         } else {
-          create = violatesUnique(backend, type, args, table)
+          create = violatesUnique(backend, type, args, collection)
             .branch(
               r.error('unique field violation'),
               q.type(type)

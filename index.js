@@ -1426,14 +1426,12 @@ function create(backend, type) {
         definition = backend.definition;
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
-        collection = _backend$getTypeInfo.collection,
-        store = _backend$getTypeInfo.store,
         before = _backend$getTypeInfo.before,
         after = _backend$getTypeInfo.after,
         timeout = _backend$getTypeInfo.timeout;
 
     var q = Q(backend);
-    var table = r.db(store).table(collection);
+    var collection = backend.getCollection(type);
     var fnPath = 'backend_create' + type;
     var beforeHook = _.get(before, fnPath, function (args, backend, done) {
       return done();
@@ -1448,24 +1446,25 @@ function create(backend, type) {
         var create = null;
 
         // handle temporal plugin
-        if (hasTemporalPlugin && isVersioned && temporalDef.create !== false) {
+        if (hasTemporalPlugin && isVersioned) {
+          if (temporalDef.create === false) return reject(new Error('create is not allowed on this temporal type'));
           if (_.isFunction(temporalDef.create)) {
             create = temporalDef.create.call(_this, source, args, context, info);
-          } else if (_.isString(temporalDef.read)) {
+          } else if (_.isString(temporalDef.create)) {
             var temporalCreate = _.get(definition, 'functions["' + temporalDef.create + '"]');
             if (!_.isFunction(temporalCreate)) {
               return reject(new Error('cannot find function "' + temporalDef.create + '"'));
             }
             create = temporalCreate.call(_this, source, args, context, info);
           } else {
-            var versionCreate = _.get(_this, 'globals["' + temporalExt + '"]["createTemporal' + type + '"]');
+            var versionCreate = _.get(_this, 'globals["' + temporalExt + '"].temporalCreate');
             if (!_.isFunction(versionCreate)) {
-              return reject(new Error('could not find "createTemporal' + type + '" in globals'));
+              return reject(new Error('could not find "temporalCreate" in globals'));
             }
-            create = versionCreate(args);
+            create = versionCreate(type, args);
           }
         } else {
-          create = violatesUnique(backend, type, args, table).branch(r.error('unique field violation'), q.type(type).insert(args, { exists: backend.getRelatedValues(type, args) }).value());
+          create = violatesUnique(backend, type, args, collection).branch(r.error('unique field violation'), q.type(type).insert(args, { exists: backend.getRelatedValues(type, args) }).value());
         }
 
         return create.run(connection).then(function (result) {
@@ -1498,15 +1497,13 @@ function read(backend, type) {
         definition = backend.definition;
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
-        collection = _backend$getTypeInfo.collection,
-        store = _backend$getTypeInfo.store,
         before = _backend$getTypeInfo.before,
         after = _backend$getTypeInfo.after,
         timeout = _backend$getTypeInfo.timeout;
 
-    var table = r.db(store).table(collection);
+    var collection = backend.getCollection(type);
 
-    var _getRelationFilter = getRelationFilter(backend, type, source, info, table),
+    var _getRelationFilter = getRelationFilter(backend, type, source, info, collection),
         filter = _getRelationFilter.filter,
         many = _getRelationFilter.many;
 
@@ -1524,7 +1521,8 @@ function read(backend, type) {
         if (err) return reject(err);
 
         // handle temporal plugin
-        if (hasTemporalPlugin && isVersioned && temporalDef.read !== false) {
+        if (hasTemporalPlugin && isVersioned) {
+          if (temporalDef.read === false) return reject(new Error('read is not allowed on this temporal type'));
           if (_.isFunction(temporalDef.read)) {
             filter = temporalDef.read.call(_this, source, args, context, info);
           } else if (_.isString(temporalDef.read)) {
@@ -1534,11 +1532,11 @@ function read(backend, type) {
             }
             filter = temporalRead.call(_this, source, args, context, info);
           } else {
-            var versionFilter = _.get(_this, 'globals["' + temporalExt + '"]["filterTemporal' + type + '"]');
+            var versionFilter = _.get(_this, 'globals["' + temporalExt + '"].temporalFilter');
             if (!_.isFunction(versionFilter)) {
-              return reject(new Error('could not find "filterTemporal' + type + '" in globals'));
+              return reject(new Error('could not find "temporalFilter" in globals'));
             }
-            filter = versionFilter(args);
+            filter = versionFilter(type, args);
             args = _.omit(args, ['version', 'recordId', 'date', 'id']);
           }
         }
@@ -1566,13 +1564,21 @@ function read(backend, type) {
 }
 
 function update$1(backend, type) {
+  // temporal plugin details
+  var hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal');
+  var temporalExt = backend._temporalExtension;
+  var typeDef = _.get(backend.definition, 'types["' + type + '"]');
+  var temporalDef = _.get(typeDef, '["' + temporalExt + '"]');
+  var isVersioned = _.get(temporalDef, 'versioned') === true;
+
   return function (source, args) {
     var _this = this;
 
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
     var r = backend.r,
-        connection = backend.connection;
+        connection = backend.connection,
+        definition = backend.definition;
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         before = _backend$getTypeInfo.before,
@@ -1580,7 +1586,7 @@ function update$1(backend, type) {
         timeout = _backend$getTypeInfo.timeout;
 
     var q = Q(backend);
-    var table = backend.getCollection(type);
+    var collection = backend.getCollection(type);
     var id = backend.getPrimaryFromArgs(type, args);
     var fnPath = 'backend_update' + type;
     var beforeHook = _.get(before, fnPath, function (args, backend, done) {
@@ -1593,11 +1599,34 @@ function update$1(backend, type) {
     return new Promise$1(function (resolve, reject) {
       return beforeHook.call(_this, { source: source, args: args, context: context, info: info }, backend, function (err) {
         if (err) return reject(err);
+        var update = null;
 
-        var notThis = notThisRecord(backend, type, args, table);
-        return violatesUnique(backend, type, args, notThis).branch(r.error('unique field violation'), q.type(type).update(args, { exists: backend.getRelatedValues(type, args) }).do(function () {
-          return q.type(type).get(id).value();
-        }).value()).run(connection).then(function (result) {
+        // handle temporal plugin
+        if (hasTemporalPlugin && isVersioned) {
+          if (temporalDef.update === false) return reject(new Error('update is not allowed on this temporal type'));
+          if (_.isFunction(temporalDef.update)) {
+            update = temporalDef.update.call(_this, source, args, context, info);
+          } else if (_.isString(temporalDef.update)) {
+            var temporalUpdate = _.get(definition, 'functions["' + temporalDef.update + '"]');
+            if (!_.isFunction(temporalUpdate)) {
+              return reject(new Error('cannot find function "' + temporalDef.update + '"'));
+            }
+            update = temporalUpdate.call(_this, source, args, context, info);
+          } else {
+            var versionUpdate = _.get(_this, 'globals["' + temporalExt + '"].temporalUpdate');
+            if (!_.isFunction(versionUpdate)) {
+              return reject(new Error('could not find "temporalUpdate" in globals'));
+            }
+            update = versionUpdate(type, args);
+          }
+        } else {
+          var notThis = notThisRecord(backend, type, args, collection);
+          update = violatesUnique(backend, type, args, notThis).branch(r.error('unique field violation'), q.type(type).update(args, { exists: backend.getRelatedValues(type, args) }).do(function () {
+            return q.type(type).get(id).value();
+          }).value());
+        }
+
+        return update.run(connection).then(function (result) {
           return afterHook.call(_this, result, args, backend, function (err, result) {
             if (err) return reject(err);
             return resolve(result);
@@ -1609,12 +1638,20 @@ function update$1(backend, type) {
 }
 
 function del(backend, type) {
+  // temporal plugin details
+  var hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal');
+  var temporalExt = backend._temporalExtension;
+  var typeDef = _.get(backend.definition, 'types["' + type + '"]');
+  var temporalDef = _.get(typeDef, '["' + temporalExt + '"]');
+  var isVersioned = _.get(temporalDef, 'versioned') === true;
+
   return function (source, args) {
     var _this = this;
 
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
-    var connection = backend.connection;
+    var connection = backend.connection,
+        definition = backend.definition;
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         before = _backend$getTypeInfo.before,
@@ -1633,8 +1670,31 @@ function del(backend, type) {
     return new Promise$1(function (resolve, reject) {
       return beforeHook.call(_this, { source: source, args: args, context: context, info: info }, backend, function (err) {
         if (err) return reject(err);
+        var del = null;
 
-        return q.type(type).delete(args).run(connection).then(function (result) {
+        // handle temporal plugin
+        if (hasTemporalPlugin && isVersioned) {
+          if (temporalDef.delete === false) return reject(new Error('delete is not allowed on this temporal type'));
+          if (_.isFunction(temporalDef.delete)) {
+            del = temporalDef.delete.call(_this, source, args, context, info);
+          } else if (_.isString(temporalDef.delete)) {
+            var temporalDelete = _.get(definition, 'functions["' + temporalDef.delete + '"]');
+            if (!_.isFunction(temporalDelete)) {
+              return reject(new Error('cannot find function "' + temporalDef.delete + '"'));
+            }
+            del = temporalDelete.call(_this, source, args, context, info);
+          } else {
+            var versionDelete = _.get(_this, 'globals["' + temporalExt + '"].temporalDelete');
+            if (!_.isFunction(versionDelete)) {
+              return reject(new Error('could not find "temporalDelete" in globals'));
+            }
+            del = versionDelete(type, args);
+          }
+        } else {
+          del = q.type(type).delete(args);
+        }
+
+        return del.run(connection).then(function (result) {
           return afterHook.call(_this, result, args, backend, function (err, result) {
             if (err) return reject(err);
             return resolve(result);
