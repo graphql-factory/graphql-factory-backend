@@ -18,7 +18,7 @@ export default function create (backend, type) {
     let collection = backend.getCollection(type)
     let fnPath = `backend_create${type}`
     let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-    let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(result))
+    let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
 
     return new Promise((resolve, reject) => {
       return beforeHook.call(this, { source, args, context, info }, backend, (err) => {

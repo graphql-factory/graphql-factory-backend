@@ -117,6 +117,10 @@ export default class GraphQLFactoryBaseBackend extends Events {
     if (_.isString(name) && _.isFunction(fn)) _.set(this.queries, name, fn.bind(this))
   }
 
+  asError (err) {
+    return err instanceof Error ? err : new Error(err)
+  }
+
   getCurrentPath (info) {
     // support for current and previous graphql info objects
     let infoPath = _.get(info, 'path', [])

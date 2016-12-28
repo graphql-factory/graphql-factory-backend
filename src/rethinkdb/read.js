@@ -10,6 +10,9 @@ export default function read (backend, type) {
   let temporalDef = _.get(typeDef, `["${temporalExt}"]`)
   let isVersioned = _.get(temporalDef, `versioned`) === true
 
+  // helpers
+  let asError = backend.asError
+
   // field resolve function
   return function (source, args, context = {}, info) {
     let { r, connection, definition } = backend
@@ -19,12 +22,12 @@ export default function read (backend, type) {
     let { filter, many } = getRelationFilter(backend, type, source, info, collection)
     let fnPath = `backend_read${type}`
     let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-    let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(result))
+    let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
 
     // handle basic read
     return new Promise((resolve, reject) => {
       return beforeHook.call(this, { source, args, context, info }, backend, (err) => {
-        if (err) return reject(err)
+        if (err) return reject(asError(err))
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
@@ -58,14 +61,17 @@ export default function read (backend, type) {
             return objs.count().eq(0).branch(r.expr(null), r.expr(objs).nth(0))
           })
         }
+
         return filter.run(connection)
           .then((result) => {
             return afterHook.call(this, result, args, backend, (err, result) => {
-              if (err) return reject(err)
+              if (err) return reject(asError(err))
               return resolve(result)
             })
           })
-          .catch(reject)
+          .catch((err) => {
+            return reject(asError(err))
+          })
       })
     })
       .timeout(timeout || 10000)

@@ -786,6 +786,11 @@ var GraphQLFactoryBaseBackend = function (_Events) {
       if (_.isString(name) && _.isFunction(fn)) _.set(this.queries, name, fn.bind(this));
     }
   }, {
+    key: 'asError',
+    value: function asError(err) {
+      return err instanceof Error ? err : new Error(err);
+    }
+  }, {
     key: 'getCurrentPath',
     value: function getCurrentPath(info) {
       // support for current and previous graphql info objects
@@ -1437,7 +1442,7 @@ function create(backend, type) {
       return done();
     });
     var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-      return done(result);
+      return done(null, result);
     });
 
     return new Promise$1(function (resolve, reject) {
@@ -1486,6 +1491,9 @@ function read(backend, type) {
   var temporalDef = _.get(typeDef, '["' + temporalExt + '"]');
   var isVersioned = _.get(temporalDef, 'versioned') === true;
 
+  // helpers
+  var asError = backend.asError;
+
   // field resolve function
   return function (source, args) {
     var _this = this;
@@ -1512,13 +1520,13 @@ function read(backend, type) {
       return done();
     });
     var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-      return done(result);
+      return done(null, result);
     });
 
     // handle basic read
     return new Promise$1(function (resolve, reject) {
       return beforeHook.call(_this, { source: source, args: args, context: context, info: info }, backend, function (err) {
-        if (err) return reject(err);
+        if (err) return reject(asError(err));
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
@@ -1552,12 +1560,15 @@ function read(backend, type) {
             return objs.count().eq(0).branch(r.expr(null), r.expr(objs).nth(0));
           });
         }
+
         return filter.run(connection).then(function (result) {
           return afterHook.call(_this, result, args, backend, function (err, result) {
-            if (err) return reject(err);
+            if (err) return reject(asError(err));
             return resolve(result);
           });
-        }).catch(reject);
+        }).catch(function (err) {
+          return reject(asError(err));
+        });
       });
     }).timeout(timeout || 10000);
   };
@@ -1593,7 +1604,7 @@ function update$1(backend, type) {
       return done();
     });
     var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-      return done(result);
+      return done(null, result);
     });
 
     return new Promise$1(function (resolve, reject) {
@@ -1664,7 +1675,7 @@ function del(backend, type) {
       return done();
     });
     var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-      return done(result);
+      return done(null, result);
     });
 
     return new Promise$1(function (resolve, reject) {

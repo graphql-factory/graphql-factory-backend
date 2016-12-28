@@ -16,7 +16,7 @@ export default function del (backend, type) {
     let q = Q(backend)
     let fnPath = `backend_delete${type}`
     let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-    let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(result))
+    let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
 
     return new Promise((resolve, reject) => {
       return beforeHook.call(this, { source, args, context, info }, backend, (err) => {
