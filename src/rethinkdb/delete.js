@@ -27,13 +27,13 @@ export default function del (backend, type) {
         if (hasTemporalPlugin && isVersioned) {
           if (temporalDef.delete === false) return reject(new Error('delete is not allowed on this temporal type'))
           if (_.isFunction(temporalDef.delete)) {
-            del = temporalDef.delete.call(this, source, args, context, info)
+            return resolve(temporalDef.delete.call(this, source, args, context, info))
           } else if (_.isString(temporalDef.delete)) {
             let temporalDelete = _.get(definition, `functions["${temporalDef.delete}"]`)
             if (!_.isFunction(temporalDelete)) {
               return reject(new Error(`cannot find function "${temporalDef.delete}"`))
             }
-            del = temporalDelete.call(this, source, args, context, info)
+            return resolve(temporalDelete.call(this, source, args, context, info))
           } else {
             let versionDelete = _.get(this, `globals["${temporalExt}"].temporalDelete`)
             if (!_.isFunction(versionDelete)) {

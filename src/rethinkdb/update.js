@@ -30,13 +30,13 @@ export default function update (backend, type) {
         if (hasTemporalPlugin && isVersioned) {
           if (temporalDef.update === false) return reject(new Error('update is not allowed on this temporal type'))
           if (_.isFunction(temporalDef.update)) {
-            update = temporalDef.update.call(this, source, args, context, info)
+            return resolve(temporalDef.update.call(this, source, args, context, info))
           } else if (_.isString(temporalDef.update)) {
             let temporalUpdate = _.get(definition, `functions["${temporalDef.update}"]`)
             if (!_.isFunction(temporalUpdate)) {
               return reject(new Error(`cannot find function "${temporalDef.update}"`))
             }
-            update = temporalUpdate.call(this, source, args, context, info)
+            return resolve(temporalUpdate.call(this, source, args, context, info))
           } else {
             let versionUpdate = _.get(this, `globals["${temporalExt}"].temporalUpdate`)
             if (!_.isFunction(versionUpdate)) {

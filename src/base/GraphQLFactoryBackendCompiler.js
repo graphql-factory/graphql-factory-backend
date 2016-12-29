@@ -339,7 +339,7 @@ export default class GraphQLFactoryBackendCompiler {
         if (belongsTo) {
           _.forEach(belongsTo, (config, type) => {
             _.forEach(config, (key, field) => {
-              let foreignFieldDef = _.get(this._types, `["${type}"].fields["${field}"]`)
+              let foreignFieldDef = _.get(this.definition.types, `["${type}"].fields["${field}"]`)
               _.set(_backend, `computed.relations.belongsTo["${type}"]["${field}"]`, {
                 primary: fieldName,
                 foreign: key,

@@ -21,6 +21,8 @@ export function getRelationFilter (backend, type, source, info, filter) {
   } else if (nested && _.has(fields, has.foreign)) {
     many = has.many
 
+    console.log({ nested, many, has })
+
     // get the source id or ids
     let hasId = _.get(source, currentPath)
     hasId = !many && _.isArray(hasId) ? _.get(hasId, '[0]') : hasId

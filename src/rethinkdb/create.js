@@ -29,13 +29,13 @@ export default function create (backend, type) {
         if (hasTemporalPlugin && isVersioned) {
           if (temporalDef.create === false) return reject(new Error('create is not allowed on this temporal type'))
           if (_.isFunction(temporalDef.create)) {
-            create = temporalDef.create.call(this, source, args, context, info)
+            return resolve(temporalDef.create.call(this, source, args, context, info))
           } else if (_.isString(temporalDef.create)) {
             let temporalCreate = _.get(definition, `functions["${temporalDef.create}"]`)
             if (!_.isFunction(temporalCreate)) {
               return reject(new Error(`cannot find function "${temporalDef.create}"`))
             }
-            create = temporalCreate.call(this, source, args, context, info)
+            return resolve(temporalCreate.call(this, source, args, context, info))
           } else {
             let versionCreate = _.get(this, `globals["${temporalExt}"].temporalCreate`)
             if (!_.isFunction(versionCreate)) {
