@@ -685,6 +685,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
       // make the backend definition
       var compiler = new GraphQLFactoryBackendCompiler(this);
       compiler.compile();
+      return this;
     }
 
     /******************************************************************
@@ -1785,9 +1786,6 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
 
     // add values to the globals namespace
     _.merge(_this.definition.globals, defineProperty({}, namespace, { r: r, connection: connection }));
-
-    // make the backend
-    _this.make();
     return _this;
   }
 

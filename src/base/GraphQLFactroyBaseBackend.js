@@ -44,6 +44,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
     // make the backend definition
     let compiler = new GraphQLFactoryBackendCompiler(this)
     compiler.compile()
+    return this
   }
 
   /******************************************************************

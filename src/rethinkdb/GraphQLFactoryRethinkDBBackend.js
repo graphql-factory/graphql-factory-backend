@@ -30,9 +30,6 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
 
     // add values to the globals namespace
     _.merge(this.definition.globals, { [namespace]: { r, connection } })
-
-    // make the backend
-    this.make()
   }
 
   /*******************************************************************
