@@ -366,6 +366,8 @@ var GraphQLFactoryBackendCompiler = function () {
 
         // add properties for each schema type
         _.forEach(schemas, function (schema) {
+          if (!schema) return true;
+
           var objName = makeObjectName(schema, QUERY);
           _.set(_this3.definition.schemas, '["' + schema + '"].query', objName);
 
@@ -422,6 +424,8 @@ var GraphQLFactoryBackendCompiler = function () {
 
         // add properties for each schema type
         _.forEach(schemas, function (schema) {
+          if (!schema) return true;
+
           var objName = makeObjectName(schema, MUTATION);
           _.set(_this4.definition.schemas, '["' + schema + '"].mutation', objName);
 
@@ -497,7 +501,7 @@ var GraphQLFactoryBackendCompiler = function () {
           // will determine how it returns data
           if (has) {
             var relationPath = '["' + typeName + '"]["' + _this5.extension + '"].computed.relations';
-            _.set(_this5.definition.types, '["' + relationPath + '"].has["' + name + '"]["' + fieldName + '"]', {
+            _.set(_this5.definition.types, relationPath + '.has["' + name + '"]["' + fieldName + '"]', {
               foreign: has,
               many: _.isArray(type)
             });
@@ -661,6 +665,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     _this.graphql = graphql;
     _this.factory = factory(graphql);
     _this.name = name || 'GraphQLFactoryBackend';
+    _this.queries = {};
 
     // create a definition
     _this.definition = new factory.GraphQLFactoryDefinition(config, { plugin: plugin });
@@ -674,7 +679,6 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     _this._options = options || {};
     _this._defaultStore = _.get(config, 'options.store', 'test');
     _this._installData = {};
-    _this._queries = {};
     _this._lib = null;
     _this._plugin = null;
     return _this;

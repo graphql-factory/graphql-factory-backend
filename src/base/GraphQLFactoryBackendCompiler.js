@@ -239,6 +239,8 @@ export default class GraphQLFactoryBackendCompiler {
 
       // add properties for each schema type
       _.forEach(schemas, (schema) => {
+        if (!schema) return true
+
         let objName = makeObjectName(schema, QUERY)
         _.set(this.definition.schemas, `["${schema}"].query`, objName)
 
@@ -285,6 +287,8 @@ export default class GraphQLFactoryBackendCompiler {
 
       // add properties for each schema type
       _.forEach(schemas, (schema) => {
+        if (!schema) return true
+
         let objName = makeObjectName(schema, MUTATION)
         _.set(this.definition.schemas, `["${schema}"].mutation`, objName)
 
@@ -349,7 +353,7 @@ export default class GraphQLFactoryBackendCompiler {
         // will determine how it returns data
         if (has) {
           let relationPath = `["${typeName}"]["${this.extension}"].computed.relations`
-          _.set(this.definition.types, `["${relationPath}"].has["${name}"]["${fieldName}"]`, {
+          _.set(this.definition.types, `${relationPath}.has["${name}"]["${fieldName}"]`, {
             foreign: has,
             many: _.isArray(type)
           })
