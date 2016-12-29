@@ -256,16 +256,23 @@ export default class GraphQLFactoryBaseBackend extends Events {
 
     // only init definitions with a collection and store specified
     let canInit = () => {
-      return _.pickBy(this.definition.types, (typeDef) => {
+      return _.keys(_.pickBy(this.definition.types, (typeDef) => {
         let computed = _.get(typeDef, `${this._extension}.computed`, {})
         return _.has(computed, 'collection') && _.has(computed, 'store')
-      })
+      }))
     }
 
-    return Promise.map(canInit(), (t, type) => {
+    return Promise.map(canInit(), (type) => {
       let data = _.get(seedData, type, [])
       return this.initStore(type, rebuild, _.isArray(data) ? data : [])
     })
+      .then((res) => {
+        return res
+      })
+      .catch((err) => {
+        console.error(err)
+        return Promise.reject(err)
+      })
   }
 
   /******************************************************************

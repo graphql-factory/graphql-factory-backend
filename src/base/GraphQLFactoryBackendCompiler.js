@@ -13,6 +13,7 @@ export const BOOLEAN = 'Boolean'
 export const ID = 'ID'
 export const INPUT = 'Input'
 export const OBJECT = 'Object'
+export const SCALAR = 'Scalar'
 export const ENUM = 'Enum'
 export const PRIMITIVES = [STRING, INT, FLOAT, BOOLEAN, ID]
 
@@ -425,17 +426,17 @@ export default class GraphQLFactoryBackendCompiler {
           } else {
             // look for an input type
             if (typeDef.type !== ENUM) {
-              if (typeDef.type === INPUT ) {
+              if (typeDef.type === INPUT || typeDef.type === SCALAR ) {
                 args[fieldName] = { type, nullable }
               } else {
                 let inputName = `${typeName}${INPUT}`
                 let inputMatch = _.get(this.definition.types, `["${inputName}"]`, {})
 
-                if (inputMatch.type === INPUT) {
+                if (inputMatch.type === INPUT || inputMatch.type === SCALAR) {
                   args[fieldName] = { type: _.isArray(type) ? [inputName] : inputName, nullable }
                 } else {
                   console.warn('[backend warning]: calculation of type "' + rootName + '" argument "' + fieldName +
-                    '" could not find and input type and will not be added. please create type "' + inputName + '"')
+                    '" could not find an input type and will not be added. please create type "' + inputName + '"')
                 }
               }
             } else {

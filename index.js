@@ -116,6 +116,7 @@ var BOOLEAN = 'Boolean';
 var ID = 'ID';
 var INPUT = 'Input';
 var OBJECT = 'Object';
+var SCALAR = 'Scalar';
 var ENUM = 'Enum';
 var PRIMITIVES = [STRING, INT, FLOAT, BOOLEAN, ID];
 
@@ -582,16 +583,16 @@ var GraphQLFactoryBackendCompiler = function () {
             } else {
               // look for an input type
               if (typeDef.type !== ENUM) {
-                if (typeDef.type === INPUT) {
+                if (typeDef.type === INPUT || typeDef.type === SCALAR) {
                   args[fieldName] = { type: type, nullable: nullable };
                 } else {
                   var inputName = '' + typeName + INPUT;
                   var inputMatch = _.get(_this7.definition.types, '["' + inputName + '"]', {});
 
-                  if (inputMatch.type === INPUT) {
+                  if (inputMatch.type === INPUT || inputMatch.type === SCALAR) {
                     args[fieldName] = { type: _.isArray(type) ? [inputName] : inputName, nullable: nullable };
                   } else {
-                    console.warn('[backend warning]: calculation of type "' + rootName + '" argument "' + fieldName + '" could not find and input type and will not be added. please create type "' + inputName + '"');
+                    console.warn('[backend warning]: calculation of type "' + rootName + '" argument "' + fieldName + '" could not find an input type and will not be added. please create type "' + inputName + '"');
                   }
                 }
               } else {
@@ -972,15 +973,20 @@ var GraphQLFactoryBaseBackend = function (_Events) {
 
       // only init definitions with a collection and store specified
       var canInit = function canInit() {
-        return _.pickBy(_this5.definition.types, function (typeDef) {
+        return _.keys(_.pickBy(_this5.definition.types, function (typeDef) {
           var computed = _.get(typeDef, _this5._extension + '.computed', {});
           return _.has(computed, 'collection') && _.has(computed, 'store');
-        });
+        }));
       };
 
-      return Promise$1.map(canInit(), function (t, type) {
+      return Promise$1.map(canInit(), function (type) {
         var data = _.get(seedData, type, []);
         return _this5.initStore(type, rebuild, _.isArray(data) ? data : []);
+      }).then(function (res) {
+        return res;
+      }).catch(function (err) {
+        console.error(err);
+        return Promise$1.reject(err);
       });
     }
 
