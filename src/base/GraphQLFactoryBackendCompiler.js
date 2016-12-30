@@ -182,7 +182,7 @@ export default class GraphQLFactoryBackendCompiler {
                 version: { type: 'String' },
                 changeLog: { type: 'TemporalChangeLogInput' }
               },
-              resolve: branch
+              resolve: publish
             })
           }
         }

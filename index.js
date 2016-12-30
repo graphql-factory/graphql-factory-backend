@@ -294,7 +294,7 @@ var GraphQLFactoryBackendCompiler = function () {
                   version: { type: 'String' },
                   changeLog: { type: 'TemporalChangeLogInput' }
                 },
-                resolve: branch
+                resolve: publish
               });
             }
           }
