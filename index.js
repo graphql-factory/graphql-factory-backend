@@ -681,6 +681,9 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     _this._installData = {};
     _this._lib = null;
     _this._plugin = null;
+
+    // add the backend to the globals
+    _.set(_this.definition, 'globals["' + _this._extension + '"]', _this);
     return _this;
   }
 
@@ -841,22 +844,22 @@ var GraphQLFactoryBaseBackend = function (_Events) {
   }, {
     key: 'getTypeBackend',
     value: function getTypeBackend(type) {
-      return _.get(this.getTypeDefinition(type), this._extension);
+      return _.get(this.definition.types, '["' + type + '"]["' + this._extension + '"]');
     }
   }, {
     key: 'getTypeComputed',
     value: function getTypeComputed(type) {
-      return _.get(this.getTypeBackend(type), 'computed');
+      return _.get(this.definition.types, '["' + type + '"]["' + this._extension + '"]computed');
     }
   }, {
     key: 'getTypeDefinition',
     value: function getTypeDefinition(type) {
-      return _.get(this.definition.types, type, {});
+      return _.get(this.definition.types, '["' + type + '"]', {});
     }
   }, {
     key: 'getTypeFields',
     value: function getTypeFields(type) {
-      return _.get(this.getTypeDefinition(type), 'fields');
+      return _.get(this.definition.types, '["' + type + '"].fields');
     }
   }, {
     key: 'getTypeInfo',

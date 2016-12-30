@@ -38,6 +38,9 @@ export default class GraphQLFactoryBaseBackend extends Events {
     this._installData = {}
     this._lib = null
     this._plugin = null
+
+    // add the backend to the globals
+    _.set(this.definition, `globals["${this._extension}"]`, this)
   }
 
   make () {
@@ -154,19 +157,19 @@ export default class GraphQLFactoryBaseBackend extends Events {
   }
 
   getTypeBackend (type) {
-    return _.get(this.getTypeDefinition(type), this._extension)
+    return _.get(this.definition.types, `["${type}"]["${this._extension}"]`)
   }
 
   getTypeComputed (type) {
-    return _.get(this.getTypeBackend(type), 'computed')
+    return _.get(this.definition.types, `["${type}"]["${this._extension}"]computed`)
   }
 
   getTypeDefinition (type) {
-    return _.get(this.definition.types, type, {})
+    return _.get(this.definition.types, `["${type}"]`, {})
   }
 
   getTypeFields (type) {
-    return _.get(this.getTypeDefinition(type), 'fields')
+    return _.get(this.definition.types, `["${type}"].fields`)
   }
 
   getTypeInfo (type, info) {
