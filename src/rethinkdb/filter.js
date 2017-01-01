@@ -7,31 +7,77 @@ export function isPromise (obj) {
   return false
 }
 
+export function reqlPath (base, pathStr) {
+  _.forEach(_.toPath(pathStr), (p) => {
+    base = base(p)
+  })
+  return base
+}
+
 // gets relationships defined in the type definition and also
 export function getRelationFilter (backend, type, source, info, filter) {
   filter = filter || backend.getCollection(type)
+
+  // temporal plugin details
+  let { r, definition, _temporalExtension } = backend
+  let temporalDef = _.get(definition, `types["${type}"]["${_temporalExtension}"]`, {})
+  let { versioned, readMostCurrent } = temporalDef
+  let isVersioned = Boolean(versioned) && definition.hasPlugin('GraphQLFactoryTemporal')
+  let date = _.get(info, `rootValue["${_temporalExtension}"].date`, null)
+  let temporalFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
+  let temporalArgs = {}
+  let versionArgs = _.get(source, 'versionArgs')
+  if (date) temporalArgs.date = date
+  temporalArgs = _.isEmpty(versionArgs) ? temporalArgs : versionArgs
+
+  // standard plugin details
+  let id = null
   let many = true
-  let { r } = backend
   let { fields, nested, currentPath, belongsTo, has } = backend.getTypeInfo(type, info)
 
-  // check for nested with belongsTo relationship
-  if (nested && _.has(fields, belongsTo.primary) && _.has(source, belongsTo.foreign)) {
-    many = belongsTo.many
-    filter = filter.filter({ [belongsTo.primary]: source[belongsTo.foreign] })
-  } else if (nested && _.has(fields, has.foreign)) {
-    many = has.many
+  // check for nested relations
+  if (nested) {
+    // check for belongsTo relation
+    if (_.has(fields, belongsTo.primary)
+      && (_.has(source, belongsTo.foreign)
+      || (isVersioned && has.foreign === `${_temporalExtension}.recordId`))) {
+      many = belongsTo.many
 
-    console.log({ nested, many, has })
+      // get the relates source id(s)
+      id = _.get(source, belongsTo.foreign)
 
-    // get the source id or ids
-    let hasId = _.get(source, currentPath)
-    hasId = !many && _.isArray(hasId) ? _.get(hasId, '[0]') : hasId
-    if (!hasId || (_.isArray(hasId) && !hasId.length)) return { filter: r.expr([]), many }
+      // if there is no has id, or the hasId is an empty array, return an empty array
+      if (!id || (_.isArray(id) && !id.length)) return { filter: r.expr([]), many }
 
-    // do an array or field search
-    if (many) filter = filter.filter((obj) => r.expr(hasId).contains(obj(has.foreign)))
-    else filter = filter.filter({ [has.foreign]: hasId })
+      // if versioned filter the correct versions
+      filter = (isVersioned && belongsTo.foreign === `${_temporalExtension}.recordId`)
+        ? temporalFilter(type, temporalArgs)
+        : filter
+
+      filter = filter.filter((rec) => reqlPath(rec, belongsTo.primary).eq(id))
+    }
+
+    // check for has
+    else if (_.has(fields, has.foreign) || (isVersioned && has.foreign === `${_temporalExtension}.recordId`)) {
+      many = has.many
+
+      // get the related source id(s)
+      id = _.get(source, currentPath)
+
+      // if there is no has id, or the hasId is an empty array, return an empty array
+      if (!id || (_.isArray(id) && !id.length)) return { filter: r.expr([]), many }
+
+      // if versioned filter the correct versions
+      filter = (isVersioned && has.foreign === `${_temporalExtension}.recordId`)
+        ? filter = temporalFilter(type, temporalArgs)
+        : filter
+
+      filter = many
+        ? filter.filter((rec) => r.expr(id).contains(reqlPath(rec, has.foreign)))
+        : filter.filter((rec) => reqlPath(rec, has.foreign).eq(id))
+    }
   }
+
   return { filter, many }
 }
 

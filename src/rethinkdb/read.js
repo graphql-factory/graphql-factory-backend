@@ -3,25 +3,26 @@ import Promise from 'bluebird'
 import { getRelationFilter, getArgsFilter } from './filter'
 
 export default function read (backend, type) {
-  // temporal plugin details
-  let hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal')
-  let temporalExt = backend._temporalExtension
-  let typeDef = _.get(backend.definition, `types["${type}"]`)
-  let temporalDef = _.get(typeDef, `["${temporalExt}"]`)
-  let readMostCurrent = _.get(temporalDef, 'readMostCurrent', false)
-  let isVersioned = _.get(temporalDef, `versioned`) === true
-
-  // helpers
-  let asError = backend.asError
-
-  // field resolve function
   return function (source, args, context = {}, info) {
-    let { r, connection, definition } = backend
-    let { before, after, timeout } = backend.getTypeInfo(type, info)
-    let temporalMostCurrent = _.get(this, `globals["${temporalExt}"].temporalMostCurrent`)
+    let { r, connection, definition, asError, _temporalExtension } = backend
+
+    // temporal plugin details
+    let hasTemporalPlugin = definition.hasPlugin('GraphQLFactoryTemporal')
+    let temporalDef = _.get(definition, `types["${type}"]["${_temporalExtension}"]`, {})
+    let { versioned, readMostCurrent } = temporalDef
+    let isVersioned = Boolean(versioned) && definition.hasPlugin('GraphQLFactoryTemporal')
+
+    // type details
+    let { before, after, timeout, nested } = backend.getTypeInfo(type, info)
+    let temporalMostCurrent = _.get(this, `globals["${_temporalExtension}"].temporalMostCurrent`)
     let collection = backend.getCollection(type)
 
-    let { filter, many } = getRelationFilter(backend, type, source, info, collection)
+    // add the date argument to the rootValue
+    if (isVersioned) {
+      _.set(info, `rootValue["${_temporalExtension}"].date`, args.date)
+    }
+
+    let { filter, many } = getRelationFilter.call(this, backend, type, source, info, collection)
     let fnPath = `backend_read${type}`
     let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
     let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
@@ -32,7 +33,7 @@ export default function read (backend, type) {
         if (err) return reject(asError(err))
 
         // handle temporal plugin
-        if (hasTemporalPlugin && isVersioned) {
+        if (isVersioned && !nested) {
           if (temporalDef.read === false) return reject(new Error('read is not allowed on this temporal type'))
           if (_.isFunction(temporalDef.read)) {
             return resolve(temporalDef.read.call(this, source, args, context, info))
@@ -46,7 +47,7 @@ export default function read (backend, type) {
             if (!_.keys(args).length && readMostCurrent === true) {
               filter = temporalMostCurrent(type)
             } else {
-              let versionFilter = _.get(this, `globals["${temporalExt}"].temporalFilter`)
+              let versionFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
               if (!_.isFunction(versionFilter)) {
                 return reject(new Error(`could not find "temporalFilter" in globals`))
               }

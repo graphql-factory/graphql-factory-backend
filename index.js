@@ -8,22 +8,6 @@ var _ = _interopDefault(require('lodash'));
 var Promise$1 = _interopDefault(require('bluebird'));
 var Events = _interopDefault(require('events'));
 
-var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) {
-  return typeof obj;
-} : function (obj) {
-  return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj;
-};
-
-
-
-
-
-
-
-
-
-
-
 var classCallCheck = function (instance, Constructor) {
   if (!(instance instanceof Constructor)) {
     throw new TypeError("Cannot call a class as a function");
@@ -197,7 +181,9 @@ var GraphQLFactoryBackendCompiler = function () {
   }, {
     key: 'compile',
     value: function compile() {
-      return this.extendTemporal().compileDefinition().computeExtension().buildQueries().buildMutations().buildRelations().setListArgs().value();
+      return this.extendTemporal().compileDefinition().computeExtension().buildRelations().buildQueries().buildMutations()
+      // .buildRelations()
+      .setListArgs().value();
     }
   }, {
     key: 'value',
@@ -490,7 +476,7 @@ var GraphQLFactoryBackendCompiler = function () {
                 var foreignFieldDef = _.get(_this5.definition.types, '["' + type + '"].fields["' + field + '"]');
                 _.set(_backend, 'computed.relations.belongsTo["' + type + '"]["' + field + '"]', {
                   primary: fieldName,
-                  foreign: key,
+                  foreign: _.isString(key) ? key : _.get(key, 'foreignKey', 'id'),
                   many: _.isArray(getType(foreignFieldDef))
                 });
               });
@@ -502,7 +488,7 @@ var GraphQLFactoryBackendCompiler = function () {
           if (has) {
             var relationPath = '["' + typeName + '"]["' + _this5.extension + '"].computed.relations';
             _.set(_this5.definition.types, relationPath + '.has["' + name + '"]["' + fieldName + '"]', {
-              foreign: has,
+              foreign: _.isString(has) ? has : _.get(has, 'foreignKey', 'id'),
               many: _.isArray(type)
             });
           }
@@ -564,6 +550,7 @@ var GraphQLFactoryBackendCompiler = function () {
         if (!type) return true;
         var typeName = getTypeName(type);
         var typeDef = _.get(_this7.definition.types, '["' + typeName + '"]', {});
+        var relations = _.get(typeDef, _this7.extension + '.computed.relations', {});
         fieldDef = fields[fieldName] = makeFieldDef(fieldDef);
         var nullable = operation === MUTATION ? fieldDef.nullable : true;
 
@@ -580,7 +567,7 @@ var GraphQLFactoryBackendCompiler = function () {
             fieldDef.resolve = fieldDef.resolve || 'backend_read' + type;
           } else {
             // add args for related types
-            if (fieldDef.belongsTo) {
+            if (_.has(relations, 'belongsTo["' + rootName + '"]["' + fieldName + '"]')) {
               args[fieldName] = { type: 'String', nullable: nullable };
             } else if (fieldDef.has) {
               args[fieldName] = { type: _.isArray(fieldDef.type) ? ['String'] : 'String', nullable: nullable };
@@ -1322,11 +1309,37 @@ var Q = function (backend) {
   return new GraphQLFactoryBackendQueryBuilder(backend);
 };
 
+function reqlPath(base, pathStr) {
+  _.forEach(_.toPath(pathStr), function (p) {
+    base = base(p);
+  });
+  return base;
+}
+
 // gets relationships defined in the type definition and also
 function getRelationFilter(backend, type, source, info, filter) {
   filter = filter || backend.getCollection(type);
+
+  // temporal plugin details
+  var r = backend.r,
+      definition = backend.definition,
+      _temporalExtension = backend._temporalExtension;
+
+  var temporalDef = _.get(definition, 'types["' + type + '"]["' + _temporalExtension + '"]', {});
+  var versioned = temporalDef.versioned,
+      readMostCurrent = temporalDef.readMostCurrent;
+
+  var isVersioned = Boolean(versioned) && definition.hasPlugin('GraphQLFactoryTemporal');
+  var date = _.get(info, 'rootValue["' + _temporalExtension + '"].date', null);
+  var temporalFilter = _.get(this, 'globals["' + _temporalExtension + '"].temporalFilter');
+  var temporalArgs = {};
+  var versionArgs = _.get(source, 'versionArgs');
+  if (date) temporalArgs.date = date;
+  temporalArgs = _.isEmpty(versionArgs) ? temporalArgs : versionArgs;
+
+  // standard plugin details
+  var id = null;
   var many = true;
-  var r = backend.r;
 
   var _backend$getTypeInfo = backend.getTypeInfo(type, info),
       fields = _backend$getTypeInfo.fields,
@@ -1335,33 +1348,49 @@ function getRelationFilter(backend, type, source, info, filter) {
       belongsTo = _backend$getTypeInfo.belongsTo,
       has = _backend$getTypeInfo.has;
 
-  // check for nested with belongsTo relationship
+  // check for nested relations
 
 
-  if (nested && _.has(fields, belongsTo.primary) && _.has(source, belongsTo.foreign)) {
-    many = belongsTo.many;
-    filter = filter.filter(defineProperty({}, belongsTo.primary, source[belongsTo.foreign]));
-  } else if (nested && _.has(fields, has.foreign)) {
-    var _ret = function () {
-      many = has.many;
+  if (nested) {
+    // check for belongsTo relation
+    if (_.has(fields, belongsTo.primary) && (_.has(source, belongsTo.foreign) || isVersioned && has.foreign === _temporalExtension + '.recordId')) {
+      many = belongsTo.many;
 
-      console.log({ nested: nested, many: many, has: has });
+      // get the relates source id(s)
+      id = _.get(source, belongsTo.foreign);
 
-      // get the source id or ids
-      var hasId = _.get(source, currentPath);
-      hasId = !many && _.isArray(hasId) ? _.get(hasId, '[0]') : hasId;
-      if (!hasId || _.isArray(hasId) && !hasId.length) return {
-          v: { filter: r.expr([]), many: many }
-        };
+      // if there is no has id, or the hasId is an empty array, return an empty array
+      if (!id || _.isArray(id) && !id.length) return { filter: r.expr([]), many: many };
 
-      // do an array or field search
-      if (many) filter = filter.filter(function (obj) {
-        return r.expr(hasId).contains(obj(has.foreign));
-      });else filter = filter.filter(defineProperty({}, has.foreign, hasId));
-    }();
+      // if versioned filter the correct versions
+      filter = isVersioned && belongsTo.foreign === _temporalExtension + '.recordId' ? temporalFilter(type, temporalArgs) : filter;
 
-    if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
+      filter = filter.filter(function (rec) {
+        return reqlPath(rec, belongsTo.primary).eq(id);
+      });
+    }
+
+    // check for has
+    else if (_.has(fields, has.foreign) || isVersioned && has.foreign === _temporalExtension + '.recordId') {
+        many = has.many;
+
+        // get the related source id(s)
+        id = _.get(source, currentPath);
+
+        // if there is no has id, or the hasId is an empty array, return an empty array
+        if (!id || _.isArray(id) && !id.length) return { filter: r.expr([]), many: many };
+
+        // if versioned filter the correct versions
+        filter = isVersioned && has.foreign === _temporalExtension + '.recordId' ? filter = temporalFilter(type, temporalArgs) : filter;
+
+        filter = many ? filter.filter(function (rec) {
+          return r.expr(id).contains(reqlPath(rec, has.foreign));
+        }) : filter.filter(function (rec) {
+          return reqlPath(rec, has.foreign).eq(id);
+        });
+      }
   }
+
   return { filter: filter, many: many };
 }
 
@@ -1500,18 +1529,6 @@ function create(backend, type) {
 }
 
 function read(backend, type) {
-  // temporal plugin details
-  var hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal');
-  var temporalExt = backend._temporalExtension;
-  var typeDef = _.get(backend.definition, 'types["' + type + '"]');
-  var temporalDef = _.get(typeDef, '["' + temporalExt + '"]');
-  var readMostCurrent = _.get(temporalDef, 'readMostCurrent', false);
-  var isVersioned = _.get(temporalDef, 'versioned') === true;
-
-  // helpers
-  var asError = backend.asError;
-
-  // field resolve function
   return function (source, args) {
     var _this = this;
 
@@ -1519,19 +1536,38 @@ function read(backend, type) {
     var info = arguments[3];
     var r = backend.r,
         connection = backend.connection,
-        definition = backend.definition;
+        definition = backend.definition,
+        asError = backend.asError,
+        _temporalExtension = backend._temporalExtension;
+
+    // temporal plugin details
+
+    var hasTemporalPlugin = definition.hasPlugin('GraphQLFactoryTemporal');
+    var temporalDef = _.get(definition, 'types["' + type + '"]["' + _temporalExtension + '"]', {});
+    var versioned = temporalDef.versioned,
+        readMostCurrent = temporalDef.readMostCurrent;
+
+    var isVersioned = Boolean(versioned) && definition.hasPlugin('GraphQLFactoryTemporal');
+
+    // type details
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         before = _backend$getTypeInfo.before,
         after = _backend$getTypeInfo.after,
-        timeout = _backend$getTypeInfo.timeout;
+        timeout = _backend$getTypeInfo.timeout,
+        nested = _backend$getTypeInfo.nested;
 
-    var temporalMostCurrent = _.get(this, 'globals["' + temporalExt + '"].temporalMostCurrent');
+    var temporalMostCurrent = _.get(this, 'globals["' + _temporalExtension + '"].temporalMostCurrent');
     var collection = backend.getCollection(type);
 
-    var _getRelationFilter = getRelationFilter(backend, type, source, info, collection),
-        filter = _getRelationFilter.filter,
-        many = _getRelationFilter.many;
+    // add the date argument to the rootValue
+    if (isVersioned) {
+      _.set(info, 'rootValue["' + _temporalExtension + '"].date', args.date);
+    }
+
+    var _getRelationFilter$ca = getRelationFilter.call(this, backend, type, source, info, collection),
+        filter = _getRelationFilter$ca.filter,
+        many = _getRelationFilter$ca.many;
 
     var fnPath = 'backend_read' + type;
     var beforeHook = _.get(before, fnPath, function (args, backend, done) {
@@ -1547,7 +1583,7 @@ function read(backend, type) {
         if (err) return reject(asError(err));
 
         // handle temporal plugin
-        if (hasTemporalPlugin && isVersioned) {
+        if (isVersioned && !nested) {
           if (temporalDef.read === false) return reject(new Error('read is not allowed on this temporal type'));
           if (_.isFunction(temporalDef.read)) {
             return resolve(temporalDef.read.call(_this, source, args, context, info));
@@ -1561,7 +1597,7 @@ function read(backend, type) {
             if (!_.keys(args).length && readMostCurrent === true) {
               filter = temporalMostCurrent(type);
             } else {
-              var versionFilter = _.get(_this, 'globals["' + temporalExt + '"].temporalFilter');
+              var versionFilter = _.get(_this, 'globals["' + _temporalExtension + '"].temporalFilter');
               if (!_.isFunction(versionFilter)) {
                 return reject(new Error('could not find "temporalFilter" in globals'));
               }

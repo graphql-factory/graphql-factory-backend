@@ -87,9 +87,10 @@ export default class GraphQLFactoryBackendCompiler {
     return this.extendTemporal()
       .compileDefinition()
       .computeExtension()
+      .buildRelations()
       .buildQueries()
       .buildMutations()
-      .buildRelations()
+      // .buildRelations()
       .setListArgs()
       .value()
   }
@@ -342,7 +343,7 @@ export default class GraphQLFactoryBackendCompiler {
               let foreignFieldDef = _.get(this.definition.types, `["${type}"].fields["${field}"]`)
               _.set(_backend, `computed.relations.belongsTo["${type}"]["${field}"]`, {
                 primary: fieldName,
-                foreign: key,
+                foreign: _.isString(key) ? key : _.get(key, 'foreignKey', 'id'),
                 many: _.isArray(getType(foreignFieldDef))
               })
             })
@@ -354,7 +355,7 @@ export default class GraphQLFactoryBackendCompiler {
         if (has) {
           let relationPath = `["${typeName}"]["${this.extension}"].computed.relations`
           _.set(this.definition.types, `${relationPath}.has["${name}"]["${fieldName}"]`, {
-            foreign: has,
+            foreign: _.isString(has) ? has : _.get(has, 'foreignKey', 'id'),
             many: _.isArray(type)
           })
         }
@@ -407,6 +408,7 @@ export default class GraphQLFactoryBackendCompiler {
       if (!type) return true
       let typeName = getTypeName(type)
       let typeDef = _.get(this.definition.types, `["${typeName}"]`, {})
+      let relations = _.get(typeDef, `${this.extension}.computed.relations`, {})
       fieldDef = fields[fieldName] = makeFieldDef(fieldDef)
       let nullable = operation === MUTATION ? fieldDef.nullable : true
 
@@ -423,7 +425,7 @@ export default class GraphQLFactoryBackendCompiler {
           fieldDef.resolve = fieldDef.resolve || `backend_read${type}`
         } else {
           // add args for related types
-          if (fieldDef.belongsTo) {
+          if (_.has(relations, `belongsTo["${rootName}"]["${fieldName}"]`)) {
             args[fieldName]  = { type: 'String', nullable }
           } else if (fieldDef.has) {
             args[fieldName] = { type: _.isArray(fieldDef.type) ? ['String'] : 'String', nullable }
