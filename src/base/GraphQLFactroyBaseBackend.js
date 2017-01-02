@@ -22,6 +22,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
     this.graphql = graphql
     this.factory = factory(graphql)
     this.name = name || 'GraphQLFactoryBackend'
+    this.options = options || {}
     this.queries = {}
 
     // create a definition
@@ -33,7 +34,6 @@ export default class GraphQLFactoryBaseBackend extends Events {
     this._temporalExtension = temporalExtension || '_temporal'
     this._namespace = namespace
     this._prefix = _.isString(prefix) ? prefix : ''
-    this._options = options || {}
     this._defaultStore = _.get(config, 'options.store', 'test')
     this._installData = {}
     this._lib = null

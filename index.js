@@ -652,6 +652,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     _this.graphql = graphql;
     _this.factory = factory(graphql);
     _this.name = name || 'GraphQLFactoryBackend';
+    _this.options = options || {};
     _this.queries = {};
 
     // create a definition
@@ -663,7 +664,6 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     _this._temporalExtension = temporalExtension || '_temporal';
     _this._namespace = namespace;
     _this._prefix = _.isString(prefix) ? prefix : '';
-    _this._options = options || {};
     _this._defaultStore = _.get(config, 'options.store', 'test');
     _this._installData = {};
     _this._lib = null;
