@@ -514,7 +514,7 @@ var GraphQLFactoryBackendCompiler = function () {
             var type = _.get(fieldType, '[0]');
             var field = _.get(_this6.definition.types, '["' + name + '"].fields["read' + type + '"]', {});
 
-            if (field.resolve === 'read' + type && _.isObject(field.args)) {
+            if (field.resolve === 'backend_read' + type && _.isObject(field.args)) {
               _.set(_this6.definition.types, '["' + typeName + '"].fields["' + fieldName + '"].args', field.args);
             }
           }
@@ -1863,7 +1863,8 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
       return new Promise(function (resolve, reject) {
         return _this2.r.now().run(_this2._connection).then(function (d) {
           callback(null, d);
-          return resolve(d);
+          resolve(d);
+          return d;
         }).catch(function (err) {
           callback(err);
           return reject(err);

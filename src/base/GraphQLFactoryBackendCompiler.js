@@ -378,7 +378,7 @@ export default class GraphQLFactoryBackendCompiler {
           let type = _.get(fieldType, '[0]')
           let field = _.get(this.definition.types, `["${name}"].fields["read${type}"]`, {})
 
-          if (field.resolve === `read${type}` && _.isObject(field.args)) {
+          if (field.resolve === `backend_read${type}` && _.isObject(field.args)) {
             _.set(this.definition.types, `["${typeName}"].fields["${fieldName}"].args`, field.args)
           }
         }

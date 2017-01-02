@@ -45,7 +45,8 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
         .run(this._connection)
         .then((d) => {
           callback(null, d)
-          return resolve(d)
+          resolve(d)
+          return d
         })
         .catch((err) => {
           callback(err)
