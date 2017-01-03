@@ -3,6 +3,9 @@ export default {
     unsubscribed: {
       type: 'Boolean',
       nullable: false
+    },
+    subscribers: {
+      type: 'Int'
     }
   }
 }

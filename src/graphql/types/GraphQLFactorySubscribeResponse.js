@@ -3,6 +3,9 @@ export default {
     subscription: {
       type: 'String',
       nullable: false
+    },
+    subscribers: {
+      type: 'Int'
     }
   }
 }

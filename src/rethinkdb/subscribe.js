@@ -89,6 +89,7 @@ export default function subscribe (backend, type) {
               // potentially add a ping to the client to determine if they are still listening
               if (_.has(subscriptions, subscriptionId)) {
                 subscriptions[subscriptionId].subscribers++
+                payload.subscribers = subscriptions[subscriptionId].subscribers
                 return resolve(payload)
               }
 
@@ -101,6 +102,9 @@ export default function subscribe (backend, type) {
                   cursor,
                   subscribers: 1
                 }
+
+                // set the subscribers count
+                payload.subscribers = 1
 
                 // add the event monitor
                 cursor.each((change) => {

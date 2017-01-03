@@ -14,6 +14,9 @@ var GraphQLFactorySubscribeResponse = {
     subscription: {
       type: 'String',
       nullable: false
+    },
+    subscribers: {
+      type: 'Int'
     }
   }
 };
@@ -23,6 +26,9 @@ var GraphQLFactoryUnsubscribeResponse = {
     unsubscribed: {
       type: 'Boolean',
       nullable: false
+    },
+    subscribers: {
+      type: 'Int'
     }
   }
 };
@@ -2033,6 +2039,7 @@ function subscribe(backend, type) {
               // potentially add a ping to the client to determine if they are still listening
               if (_.has(subscriptions, subscriptionId)) {
                 subscriptions[subscriptionId].subscribers++;
+                payload.subscribers = subscriptions[subscriptionId].subscribers;
                 return {
                   v: resolve(payload)
                 };
@@ -2048,6 +2055,9 @@ function subscribe(backend, type) {
                     cursor: cursor,
                     subscribers: 1
                   };
+
+                  // set the subscribers count
+                  payload.subscribers = 1;
 
                   // add the event monitor
                   cursor.each(function (change) {
@@ -2093,12 +2103,16 @@ function unsubscribe(backend) {
 
     if (!_.has(subscriptions, subscriptionId)) throw new GraphQLError('invalid subscription id');
     subscriptions[subscriptionId].subscribers--;
+    var subscribers = subscriptions[subscriptionId].subscribers;
 
     if (subscriptions[subscriptionId].subscribers < 1) {
       subscriptions[subscriptionId].cursor.close();
       delete subscriptions[subscriptionId];
     }
-    return { unsubscribed: true };
+    return {
+      unsubscribed: true,
+      subscribers: subscribers
+    };
   };
 }
 

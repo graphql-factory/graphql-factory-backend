@@ -9,11 +9,15 @@ export default function unsubscribe (backend) {
 
     if (!_.has(subscriptions, subscriptionId)) throw new GraphQLError('invalid subscription id')
     subscriptions[subscriptionId].subscribers--
+    let subscribers = subscriptions[subscriptionId].subscribers
 
     if (subscriptions[subscriptionId].subscribers < 1) {
       subscriptions[subscriptionId].cursor.close()
       delete subscriptions[subscriptionId]
     }
-    return { unsubscribed: true }
+    return {
+      unsubscribed: true,
+      subscribers
+    }
   }
 }
