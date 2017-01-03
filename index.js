@@ -5,8 +5,52 @@ Object.defineProperty(exports, '__esModule', { value: true });
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
 var _ = _interopDefault(require('lodash'));
+var crypto = _interopDefault(require('crypto'));
 var Promise$1 = _interopDefault(require('bluebird'));
 var Events = _interopDefault(require('events'));
+
+var GraphQLFactorySubscribeResponse = {
+  fields: {
+    subscription: {
+      type: 'String',
+      nullable: false
+    }
+  }
+};
+
+var GraphQLFactoryUnsubscribeResponse = {
+  fields: {
+    unsubscribed: {
+      type: 'Boolean',
+      nullable: false
+    }
+  }
+};
+
+var types = {
+  GraphQLFactorySubscribeResponse: GraphQLFactorySubscribeResponse,
+  GraphQLFactoryUnsubscribeResponse: GraphQLFactoryUnsubscribeResponse
+};
+
+var FactoryBackendDefinition = {
+  types: types
+};
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) {
+  return typeof obj;
+} : function (obj) {
+  return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj;
+};
+
+
+
+
+
+
+
+
+
+
 
 var classCallCheck = function (instance, Constructor) {
   if (!(instance instanceof Constructor)) {
@@ -93,6 +137,9 @@ var UPDATE = 'update';
 var DELETE = 'delete';
 var QUERY = 'query';
 var MUTATION = 'mutation';
+var SUBSCRIPTION = 'subscription';
+var SUBSCRIBE = 'subscribe';
+var UNSUBSCRIBE = 'unsubscribe';
 var STRING = 'String';
 var INT = 'Int';
 var FLOAT = 'Float';
@@ -181,9 +228,7 @@ var GraphQLFactoryBackendCompiler = function () {
   }, {
     key: 'compile',
     value: function compile() {
-      return this.extendTemporal().compileDefinition().computeExtension().buildRelations().buildQueries().buildMutations()
-      // .buildRelations()
-      .setListArgs().value();
+      return this.extendTemporal().compileDefinition().computeExtension().buildRelations().buildQueries().buildMutations().buildSubscriptions().setListArgs().value();
     }
   }, {
     key: 'value',
@@ -449,13 +494,84 @@ var GraphQLFactoryBackendCompiler = function () {
       return this;
     }
   }, {
+    key: 'buildSubscriptions',
+    value: function buildSubscriptions() {
+      var _this5 = this;
+
+      _.forEach(this.definition.types, function (definition, typeName) {
+        var _backend = _.get(definition, '["' + _this5.extension + '"]', {});
+        var computed = _.get(_backend, 'computed', {});
+        var subscription = _backend.subscription;
+        var collection = computed.collection,
+            schemas = computed.schemas;
+
+        if (subscription === false || !collection) return;
+
+        subscription = _.isObject(subscription) ? subscription : {};
+        subscription.subscribe = !subscription.subscribe && subscription.subscribe !== false ? true : subscription.subscribe;
+        subscription.unsubscribe = !subscription.unsubscribe && subscription.unsubscribe !== false ? true : subscription.unsubscribe;
+
+        // add properties for each schema type
+        _.forEach(schemas, function (schema) {
+          if (!schema) return true;
+
+          var objName = makeObjectName(schema, SUBSCRIPTION);
+          _.set(_this5.definition.schemas, '["' + schema + '"].subscription', objName);
+
+          _.forEach(subscription, function (opDef, name) {
+            var type = opDef.type,
+                args = opDef.args,
+                resolve = opDef.resolve,
+                before = opDef.before,
+                after = opDef.after;
+
+            var ops = [SUBSCRIBE, UNSUBSCRIBE];
+            var fieldName = _.includes(ops, name) ? '' + name + typeName : name;
+            var resolveName = _.isString(resolve) ? resolve : 'backend_' + fieldName;
+            var returnType = type;
+
+            // get the proper response type
+            switch (name) {
+              case SUBSCRIBE:
+                returnType = 'GraphQLFactorySubscribeResponse';
+                break;
+              case UNSUBSCRIBE:
+                returnType = 'GraphQLFactoryUnsubscribeResponse';
+                break;
+              default:
+                break;
+            }
+
+            _.set(_this5.definition.types, '["' + objName + '"].fields["' + fieldName + '"]', {
+              type: returnType,
+              args: args || _this5.buildArgs(definition, SUBSCRIPTION, typeName, name),
+              resolve: resolveName
+            });
+
+            if (opDef === true || !resolve) {
+              _.set(_this5.definition, 'functions.' + resolveName, _this5.backend[name + 'Resolver'](typeName));
+            } else if (_.isFunction(resolve)) {
+              _.set(_this5.definition, 'functions.' + resolveName, resolve);
+            }
+
+            // check for before and after hooks
+            if (_.isFunction(before)) _.set(_backend, 'computed.before["' + resolveName + '"]', before);
+            if (_.isFunction(after)) _.set(_backend, 'computed.after["' + resolveName + '"]', after);
+          });
+        });
+      });
+
+      // support chaining
+      return this;
+    }
+  }, {
     key: 'buildRelations',
     value: function buildRelations() {
-      var _this5 = this;
+      var _this6 = this;
 
       _.forEach(this.definition.types, function (definition, name) {
         var fields = _.get(definition, 'fields', {});
-        var _backend = _.get(definition, '["' + _this5.extension + '"]', {});
+        var _backend = _.get(definition, '["' + _this6.extension + '"]', {});
 
         // examine each field
         _.forEach(fields, function (fieldDef, fieldName) {
@@ -473,7 +589,7 @@ var GraphQLFactoryBackendCompiler = function () {
           if (belongsTo) {
             _.forEach(belongsTo, function (config, type) {
               _.forEach(config, function (key, field) {
-                var foreignFieldDef = _.get(_this5.definition.types, '["' + type + '"].fields["' + field + '"]');
+                var foreignFieldDef = _.get(_this6.definition.types, '["' + type + '"].fields["' + field + '"]');
                 _.set(_backend, 'computed.relations.belongsTo["' + type + '"]["' + field + '"]', {
                   primary: fieldName,
                   foreign: _.isString(key) ? key : _.get(key, 'foreignKey', 'id'),
@@ -486,8 +602,8 @@ var GraphQLFactoryBackendCompiler = function () {
           // add a has relationship to the nested type. this is because the nested types resolve
           // will determine how it returns data
           if (has) {
-            var relationPath = '["' + typeName + '"]["' + _this5.extension + '"].computed.relations';
-            _.set(_this5.definition.types, relationPath + '.has["' + name + '"]["' + fieldName + '"]', {
+            var relationPath = '["' + typeName + '"]["' + _this6.extension + '"].computed.relations';
+            _.set(_this6.definition.types, relationPath + '.has["' + name + '"]["' + fieldName + '"]', {
               foreign: _.isString(has) ? has : _.get(has, 'foreignKey', 'id'),
               many: _.isArray(type)
             });
@@ -501,10 +617,10 @@ var GraphQLFactoryBackendCompiler = function () {
   }, {
     key: 'setListArgs',
     value: function setListArgs() {
-      var _this6 = this;
+      var _this7 = this;
 
       _.forEach(this.definition.types, function (typeDef, typeName) {
-        var schema = _.get(typeDef, '["' + _this6.extension + '"].computed.schemas[0]');
+        var schema = _.get(typeDef, '["' + _this7.extension + '"].computed.schemas[0]');
         var name = makeObjectName(schema, QUERY);
 
         _.forEach(typeDef.fields, function (fieldDef, fieldName) {
@@ -512,10 +628,10 @@ var GraphQLFactoryBackendCompiler = function () {
 
           if (name && _.isArray(fieldType) && fieldType.length === 1 && fieldDef.args === undefined) {
             var type = _.get(fieldType, '[0]');
-            var field = _.get(_this6.definition.types, '["' + name + '"].fields["read' + type + '"]', {});
+            var field = _.get(_this7.definition.types, '["' + name + '"].fields["read' + type + '"]', {});
 
             if (field.resolve === 'backend_read' + type && _.isObject(field.args)) {
-              _.set(_this6.definition.types, '["' + typeName + '"].fields["' + fieldName + '"].args', field.args);
+              _.set(_this7.definition.types, '["' + typeName + '"].fields["' + fieldName + '"].args', field.args);
             }
           }
         });
@@ -537,11 +653,18 @@ var GraphQLFactoryBackendCompiler = function () {
   }, {
     key: 'buildArgs',
     value: function buildArgs(definition, operation, rootName, opName) {
-      var _this7 = this;
+      var _this8 = this;
 
       var args = {};
       var fields = _.get(definition, 'fields', {});
       var _backend = _.get(definition, '["' + this.extension + '"]', {});
+
+      // unsubscribe default gets set args
+      if (operation === SUBSCRIPTION && opName === UNSUBSCRIBE) {
+        return {
+          subscription: { type: 'String', nullable: false }
+        };
+      }
 
       if (operation === QUERY) args.limit = { type: 'Int' };
 
@@ -549,8 +672,8 @@ var GraphQLFactoryBackendCompiler = function () {
         var type = getType(fieldDef);
         if (!type) return true;
         var typeName = getTypeName(type);
-        var typeDef = _.get(_this7.definition.types, '["' + typeName + '"]', {});
-        var relations = _.get(typeDef, _this7.extension + '.computed.relations', {});
+        var typeDef = _.get(_this8.definition.types, '["' + typeName + '"]', {});
+        var relations = _.get(typeDef, _this8.extension + '.computed.relations', {});
         fieldDef = fields[fieldName] = makeFieldDef(fieldDef);
         var nullable = operation === MUTATION ? fieldDef.nullable : true;
 
@@ -561,7 +684,7 @@ var GraphQLFactoryBackendCompiler = function () {
         if (isPrimitive(type)) {
           args[fieldName] = { type: type, nullable: nullable };
         } else {
-          var typeBackend = _.get(_this7.definition.types, '["' + typeName + '"]["' + _this7.extension + '"]');
+          var typeBackend = _.get(_this8.definition.types, '["' + typeName + '"]["' + _this8.extension + '"]');
 
           if (fieldDef.resolve !== false && operation === QUERY && typeBackend) {
             fieldDef.resolve = fieldDef.resolve || 'backend_read' + type;
@@ -578,7 +701,7 @@ var GraphQLFactoryBackendCompiler = function () {
                   args[fieldName] = { type: type, nullable: nullable };
                 } else {
                   var inputName = '' + typeName + INPUT;
-                  var inputMatch = _.get(_this7.definition.types, '["' + inputName + '"]', {});
+                  var inputMatch = _.get(_this8.definition.types, '["' + inputName + '"]', {});
 
                   if (inputMatch.type === INPUT || inputMatch.type === SCALAR) {
                     args[fieldName] = { type: _.isArray(type) ? [inputName] : inputName, nullable: nullable };
@@ -650,14 +773,23 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     // set props
     _this.type = 'GraphQLFactoryBaseBackend';
     _this.graphql = graphql;
+    _this.GraphQLError = graphql.GraphQLError;
     _this.factory = factory(graphql);
     _this.name = name || 'GraphQLFactoryBackend';
     _this.options = options || {};
     _this.queries = {};
 
+    /*
+     * Subscription objects should be keyed on their hashed query value
+     * they should also keep track of how many users are subscribed so that
+     * when all users unsubscribe, the subscription can be removed
+     */
+    _this.subscriptions = {};
+
     // create a definition
     _this.definition = new factory.GraphQLFactoryDefinition(config, { plugin: plugin });
     _this.definition.merge({ globals: defineProperty({}, namespace, config) });
+    _this.definition.merge(FactoryBackendDefinition);
 
     // set non-overridable properties
     _this._extension = extension || '_backend';
@@ -711,6 +843,16 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     key: 'deleteResolver',
     value: function deleteResolver() {
       throw new Error('the deleteResolver method has not been overriden on the backend');
+    }
+  }, {
+    key: 'subscribeResolver',
+    value: function subscribeResolver() {
+      throw new Error('the subscribeResolver method has not been overriden on the backend');
+    }
+  }, {
+    key: 'unsubscribeResolver',
+    value: function unsubscribeResolver() {
+      throw new Error('the unsubscribeResolver method has not been overriden on the backend');
     }
   }, {
     key: 'getStore',
@@ -949,6 +1091,12 @@ var GraphQLFactoryBaseBackend = function (_Events) {
         newArgs = _.merge(newArgs, defineProperty({}, primaryKey, pk));
       }
       return newArgs;
+    }
+  }, {
+    key: 'toMD5Hash',
+    value: function toMD5Hash(data) {
+      if (!_.isString(data)) throw new Error('hash data must be string');
+      return crypto.createHash('md5').update(data).digest('hex');
     }
 
     /******************************************************************
@@ -1542,7 +1690,6 @@ function read(backend, type) {
 
     // temporal plugin details
 
-    var hasTemporalPlugin = definition.hasPlugin('GraphQLFactoryTemporal');
     var temporalDef = _.get(definition, 'types["' + type + '"]["' + _temporalExtension + '"]', {});
     var versioned = temporalDef.versioned,
         readMostCurrent = temporalDef.readMostCurrent;
@@ -1774,6 +1921,187 @@ function del(backend, type) {
   };
 }
 
+function subscribe(backend, type) {
+  return function (source, args) {
+    var _this = this;
+
+    var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+    var info = arguments[3];
+    var r = backend.r,
+        connection = backend.connection,
+        definition = backend.definition,
+        asError = backend.asError,
+        _temporalExtension = backend._temporalExtension,
+        subscriptions = backend.subscriptions;
+
+    // temporal plugin details
+
+    var temporalDef = _.get(definition, 'types["' + type + '"]["' + _temporalExtension + '"]', {});
+    var versioned = temporalDef.versioned,
+        readMostCurrent = temporalDef.readMostCurrent;
+
+    var isVersioned = Boolean(versioned) && definition.hasPlugin('GraphQLFactoryTemporal');
+
+    // type details
+
+    var _backend$getTypeInfo = backend.getTypeInfo(type, info),
+        before = _backend$getTypeInfo.before,
+        after = _backend$getTypeInfo.after,
+        timeout = _backend$getTypeInfo.timeout,
+        nested = _backend$getTypeInfo.nested;
+
+    var temporalMostCurrent = _.get(this, 'globals["' + _temporalExtension + '"].temporalMostCurrent');
+    var collection = backend.getCollection(type);
+
+    // add the date argument to the rootValue
+    if (isVersioned) {
+      _.set(info, 'rootValue["' + _temporalExtension + '"].date', args.date);
+    }
+
+    var _getRelationFilter$ca = getRelationFilter.call(this, backend, type, source, info, collection),
+        filter = _getRelationFilter$ca.filter,
+        many = _getRelationFilter$ca.many;
+
+    var fnPath = 'backend_subscribe' + type;
+    var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+      return done();
+    });
+    var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+      return done(null, result);
+    });
+
+    // handle basic subscribe
+    return new Promise$1(function (resolve, reject) {
+      return beforeHook.call(_this, { source: source, args: args, context: context, info: info }, backend, function (err) {
+        if (err) return reject(asError(err));
+
+        // handle temporal plugin
+        if (isVersioned && !nested) {
+          if (temporalDef.subscribe === false) {
+            return reject(new Error('subscribe is not allowed on this temporal type'));
+          }
+          if (_.isFunction(temporalDef.subscribe)) {
+            return resolve(temporalDef.subscribe.call(_this, source, args, context, info));
+          } else if (_.isString(temporalDef.subscribe)) {
+            var temporalSubscribe = _.get(definition, 'functions["' + temporalDef.subscribe + '"]');
+            if (!_.isFunction(temporalSubscribe)) {
+              return reject(new Error('cannot find function "' + temporalDef.subscribe + '"'));
+            }
+            return resolve(temporalSubscribe.call(_this, source, args, context, info));
+          } else {
+            if (!_.keys(args).length && readMostCurrent === true) {
+              filter = temporalMostCurrent(type);
+            } else {
+              var versionFilter = _.get(_this, 'globals["' + _temporalExtension + '"].temporalFilter');
+              if (!_.isFunction(versionFilter)) {
+                return reject(new Error('could not find "temporalFilter" in globals'));
+              }
+              filter = versionFilter(type, args);
+              args = _.omit(args, ['version', 'recordId', 'date', 'id']);
+            }
+          }
+        }
+
+        filter = getArgsFilter(backend, type, args, filter);
+
+        // add standard query modifiers
+        if (_.isNumber(args.limit)) filter = filter.limit(args.limit);
+
+        // if not a many relation, return only a single result or null
+        if (!many) {
+          filter = filter.coerceTo('array').do(function (objs) {
+            return objs.count().eq(0).branch(r.expr(null), r.expr(objs).nth(0));
+          });
+        }
+
+        return filter.do(function (query) {
+          return r.error(r.expr('SUBSCRIPTION:').add(query.coerceTo('STRING')));
+        }).run(connection).then(function (result) {
+          throw result;
+        }).catch(function (error) {
+          if (!_.has(error, 'msg')) return reject(asError(error));
+          if (!error.msg.match(/^SUBSCRIPTION:.+/)) return reject(asError(error));
+
+          try {
+            var _ret = function () {
+              // create the subscriptionId and the response payload
+              var subscriptionId = backend.toMD5Hash(error.msg);
+              var payload = { subscription: 'subscription:' + subscriptionId };
+
+              // check if the subscript is already active
+              // if it is, add a subscriber to the count
+              // potentially add a ping to the client to determine if they are still listening
+              if (_.has(subscriptions, subscriptionId)) {
+                subscriptions[subscriptionId].subscribers++;
+                return {
+                  v: resolve(payload)
+                };
+              }
+
+              return {
+                v: filter.changes().run(connection, function (err, cursor) {
+                  if (err) return reject(asError(err));
+
+                  // add the new subscription
+                  subscriptions[subscriptionId] = {
+                    data: {},
+                    cursor: cursor,
+                    subscribers: 1
+                  };
+
+                  // add the event monitor
+                  cursor.each(function (change) {
+                    // run the after hook on each change
+                    return afterHook.call(_this, change, args, backend, function (err, data) {
+                      if (err) {
+                        return backend.emit('subscription:' + subscriptionId, {
+                          data: data,
+                          errors: _.isArray(err) ? err : [err]
+                        });
+                      }
+                      subscriptions[subscriptionId].data = change;
+                      backend.emit('subscription:' + subscriptionId, { data: data });
+                    });
+                  });
+
+                  // return the payload
+                  return resolve(payload);
+                })
+              };
+            }();
+
+            if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
+          } catch (err) {
+            return reject(asError(err));
+          }
+        });
+      });
+    }).timeout(timeout || 10000);
+  };
+}
+
+function unsubscribe(backend) {
+  return function (source, args) {
+    var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+    var info = arguments[3];
+    var subscription = args.subscription;
+    var subscriptions = backend.subscriptions,
+        GraphQLError = backend.GraphQLError;
+
+
+    var subscriptionId = subscription.replace(/^subscription:/i, '');
+
+    if (!_.has(subscriptions, subscriptionId)) throw new GraphQLError('invalid subscription id');
+    subscriptions[subscriptionId].subscribers--;
+
+    if (subscriptions[subscriptionId].subscribers < 1) {
+      subscriptions[subscriptionId].cursor.close();
+      delete subscriptions[subscriptionId];
+    }
+    return { unsubscribed: true };
+  };
+}
+
 function createTable(dbc, name, primaryKey) {
   return dbc.tableCreate(name, { primaryKey: primaryKey }).run().then(function () {
     return name + ' Created';
@@ -1890,6 +2218,16 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
     key: 'deleteResolver',
     value: function deleteResolver(type) {
       return del(this, type);
+    }
+  }, {
+    key: 'subscribeResolver',
+    value: function subscribeResolver(type) {
+      return subscribe(this, type);
+    }
+  }, {
+    key: 'unsubscribeResolver',
+    value: function unsubscribeResolver() {
+      return unsubscribe(this);
     }
   }, {
     key: 'getStore',

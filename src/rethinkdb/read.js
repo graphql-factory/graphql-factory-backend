@@ -7,7 +7,6 @@ export default function read (backend, type) {
     let { r, connection, definition, asError, _temporalExtension } = backend
 
     // temporal plugin details
-    let hasTemporalPlugin = definition.hasPlugin('GraphQLFactoryTemporal')
     let temporalDef = _.get(definition, `types["${type}"]["${_temporalExtension}"]`, {})
     let { versioned, readMostCurrent } = temporalDef
     let isVersioned = Boolean(versioned) && definition.hasPlugin('GraphQLFactoryTemporal')

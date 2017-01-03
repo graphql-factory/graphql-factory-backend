@@ -6,6 +6,9 @@ export const UPDATE = 'update'
 export const DELETE = 'delete'
 export const QUERY = 'query'
 export const MUTATION = 'mutation'
+export const SUBSCRIPTION = 'subscription'
+export const SUBSCRIBE = 'subscribe'
+export const UNSUBSCRIBE = 'unsubscribe'
 export const STRING = 'String'
 export const INT = 'Int'
 export const FLOAT = 'Float'
@@ -90,7 +93,7 @@ export default class GraphQLFactoryBackendCompiler {
       .buildRelations()
       .buildQueries()
       .buildMutations()
-      // .buildRelations()
+      .buildSubscriptions()
       .setListArgs()
       .value()
   }
@@ -322,6 +325,73 @@ export default class GraphQLFactoryBackendCompiler {
     return this
   }
 
+  buildSubscriptions () {
+    _.forEach(this.definition.types, (definition, typeName) => {
+      let _backend = _.get(definition, `["${this.extension}"]`, {})
+      let computed = _.get(_backend, 'computed', {})
+      let { subscription } = _backend
+      let { collection, schemas } = computed
+      if (subscription === false || !collection) return
+
+      subscription = _.isObject(subscription)
+        ? subscription
+        : {}
+      subscription.subscribe = !subscription.subscribe && subscription.subscribe !== false
+        ? true
+        : subscription.subscribe
+      subscription.unsubscribe = !subscription.unsubscribe && subscription.unsubscribe !== false
+        ? true
+        : subscription.unsubscribe
+
+      // add properties for each schema type
+      _.forEach(schemas, (schema) => {
+        if (!schema) return true
+
+        let objName = makeObjectName(schema, SUBSCRIPTION)
+        _.set(this.definition.schemas, `["${schema}"].subscription`, objName)
+
+        _.forEach(subscription, (opDef, name) => {
+          let { type, args, resolve, before, after } = opDef
+          let ops = [SUBSCRIBE, UNSUBSCRIBE]
+          let fieldName = _.includes(ops, name) ? `${name}${typeName}` : name
+          let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
+          let returnType = type
+
+          // get the proper response type
+          switch (name) {
+            case SUBSCRIBE:
+              returnType = 'GraphQLFactorySubscribeResponse'
+              break
+            case UNSUBSCRIBE:
+              returnType = 'GraphQLFactoryUnsubscribeResponse'
+              break
+            default:
+              break
+          }
+
+          _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
+            type: returnType,
+            args: args || this.buildArgs(definition, SUBSCRIPTION, typeName, name),
+            resolve: resolveName
+          })
+
+          if (opDef === true || !resolve) {
+            _.set(this.definition, `functions.${resolveName}`, this.backend[`${name}Resolver`](typeName))
+          } else if (_.isFunction(resolve)) {
+            _.set(this.definition, `functions.${resolveName}`, resolve)
+          }
+
+          // check for before and after hooks
+          if (_.isFunction(before)) _.set(_backend, `computed.before["${resolveName}"]`, before)
+          if (_.isFunction(after)) _.set(_backend, `computed.after["${resolveName}"]`, after)
+        })
+      })
+    })
+
+    // support chaining
+    return this
+  }
+
   buildRelations () {
     _.forEach(this.definition.types, (definition, name) => {
       let fields = _.get(definition, 'fields', {})
@@ -400,6 +470,13 @@ export default class GraphQLFactoryBackendCompiler {
     let args = {}
     let fields = _.get(definition, 'fields', {})
     let _backend = _.get(definition, `["${this.extension}"]`, {})
+
+    // unsubscribe default gets set args
+    if (operation === SUBSCRIPTION && opName === UNSUBSCRIBE) {
+      return {
+        subscription: { type: 'String', nullable: false }
+      }
+    }
 
     if (operation === QUERY) args.limit = {type: 'Int'}
 

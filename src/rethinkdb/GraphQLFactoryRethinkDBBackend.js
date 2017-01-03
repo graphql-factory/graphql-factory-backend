@@ -5,6 +5,8 @@ import createResolver from './create'
 import readResolver from './read'
 import updateResolver from './update'
 import deleteResolver from './delete'
+import subscribeResolver from './subscribe'
+import unsubscribeResolver from './unsubscribe'
 import initStore from './initStore'
 
 import GraphQLFactoryBaseBackend from '../base/GraphQLFactroyBaseBackend'
@@ -69,6 +71,14 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
 
   deleteResolver (type) {
     return deleteResolver(this, type)
+  }
+
+  subscribeResolver (type) {
+    return subscribeResolver(this, type)
+  }
+
+  unsubscribeResolver () {
+    return unsubscribeResolver(this)
   }
 
   getStore (type) {

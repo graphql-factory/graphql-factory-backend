@@ -1,6 +1,8 @@
 import _ from 'lodash'
+import crypto from 'crypto'
 import Promise from 'bluebird'
 import Events from 'events'
+import FactoryBackendDefinition from '../graphql/index'
 import GraphQLFactoryBackendCompiler from './GraphQLFactoryBackendCompiler'
 
 export default class GraphQLFactoryBaseBackend extends Events {
@@ -20,14 +22,23 @@ export default class GraphQLFactoryBaseBackend extends Events {
     // set props
     this.type = 'GraphQLFactoryBaseBackend'
     this.graphql = graphql
+    this.GraphQLError = graphql.GraphQLError
     this.factory = factory(graphql)
     this.name = name || 'GraphQLFactoryBackend'
     this.options = options || {}
     this.queries = {}
 
+    /*
+     * Subscription objects should be keyed on their hashed query value
+     * they should also keep track of how many users are subscribed so that
+     * when all users unsubscribe, the subscription can be removed
+     */
+    this.subscriptions = {}
+
     // create a definition
     this.definition = new factory.GraphQLFactoryDefinition(config, { plugin })
     this.definition.merge({ globals: { [namespace]: config } })
+    this.definition.merge(FactoryBackendDefinition)
 
     // set non-overridable properties
     this._extension = extension || '_backend'
@@ -72,6 +83,15 @@ export default class GraphQLFactoryBaseBackend extends Events {
   deleteResolver () {
     throw new Error('the deleteResolver method has not been overriden on the backend')
   }
+
+  subscribeResolver () {
+    throw new Error('the subscribeResolver method has not been overriden on the backend')
+  }
+
+  unsubscribeResolver () {
+    throw new Error('the unsubscribeResolver method has not been overriden on the backend')
+  }
+
 
   getStore () {
     throw new Error('the getStore method has not been overriden on the backend')
@@ -246,6 +266,11 @@ export default class GraphQLFactoryBaseBackend extends Events {
       newArgs = _.merge(newArgs, { [primaryKey]: pk })
     }
     return newArgs
+  }
+
+  toMD5Hash (data) {
+    if (!_.isString(data)) throw new Error('hash data must be string')
+    return crypto.createHash('md5').update(data).digest('hex')
   }
 
   /******************************************************************
