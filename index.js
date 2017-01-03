@@ -8,6 +8,7 @@ var _ = _interopDefault(require('lodash'));
 var crypto = _interopDefault(require('crypto'));
 var Promise$1 = _interopDefault(require('bluebird'));
 var Events = _interopDefault(require('events'));
+var hat = _interopDefault(require('hat'));
 
 var GraphQLFactorySubscribeResponse = {
   fields: {
@@ -15,8 +16,9 @@ var GraphQLFactorySubscribeResponse = {
       type: 'String',
       nullable: false
     },
-    subscribers: {
-      type: 'Int'
+    subscriber: {
+      type: 'String',
+      nullable: false
     }
   }
 };
@@ -26,9 +28,6 @@ var GraphQLFactoryUnsubscribeResponse = {
     unsubscribed: {
       type: 'Boolean',
       nullable: false
-    },
-    subscribers: {
-      type: 'Int'
     }
   }
 };
@@ -668,11 +667,13 @@ var GraphQLFactoryBackendCompiler = function () {
       // unsubscribe default gets set args
       if (operation === SUBSCRIPTION && opName === UNSUBSCRIBE) {
         return {
-          subscription: { type: 'String', nullable: false }
+          subscription: { type: 'String', nullable: false },
+          subscriber: { type: 'String' }
         };
       }
 
       if (operation === QUERY) args.limit = { type: 'Int' };
+      if (operation === SUBSCRIPTION && opName === SUBSCRIBE) args.subscriber = { type: 'String' };
 
       _.forEach(fields, function (fieldDef, fieldName) {
         var type = getType(fieldDef);
@@ -1940,8 +1941,10 @@ function subscribe(backend, type) {
         _temporalExtension = backend._temporalExtension,
         subscriptions = backend.subscriptions;
 
-    // temporal plugin details
+    var subscriber = _.get(args, 'subscriber', hat());
+    delete args.subscriber;
 
+    // temporal plugin details
     var temporalDef = _.get(definition, 'types["' + type + '"]["' + _temporalExtension + '"]', {});
     var versioned = temporalDef.versioned,
         readMostCurrent = temporalDef.readMostCurrent;
@@ -2032,14 +2035,13 @@ function subscribe(backend, type) {
             var _ret = function () {
               // create the subscriptionId and the response payload
               var subscriptionId = backend.toMD5Hash(error.msg);
-              var payload = { subscription: 'subscription:' + subscriptionId };
+              var payload = { subscription: 'subscription:' + subscriptionId, subscriber: subscriber };
 
               // check if the subscript is already active
               // if it is, add a subscriber to the count
               // potentially add a ping to the client to determine if they are still listening
               if (_.has(subscriptions, subscriptionId)) {
-                subscriptions[subscriptionId].subscribers++;
-                payload.subscribers = subscriptions[subscriptionId].subscribers;
+                subscriptions[subscriptionId].subscribers = _.union(subscriptions[subscriptionId].subscribers, [subscriber]);
                 return {
                   v: resolve(payload)
                 };
@@ -2053,11 +2055,8 @@ function subscribe(backend, type) {
                   subscriptions[subscriptionId] = {
                     data: {},
                     cursor: cursor,
-                    subscribers: 1
+                    subscribers: [subscriber]
                   };
-
-                  // set the subscribers count
-                  payload.subscribers = 1;
 
                   // add the event monitor
                   cursor.each(function (change) {
@@ -2094,7 +2093,8 @@ function unsubscribe(backend) {
   return function (source, args) {
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
-    var subscription = args.subscription;
+    var subscription = args.subscription,
+        subscriber = args.subscriber;
     var subscriptions = backend.subscriptions,
         GraphQLError = backend.GraphQLError;
 
@@ -2102,16 +2102,14 @@ function unsubscribe(backend) {
     var subscriptionId = subscription.replace(/^subscription:/i, '');
 
     if (!_.has(subscriptions, subscriptionId)) throw new GraphQLError('invalid subscription id');
-    subscriptions[subscriptionId].subscribers--;
-    var subscribers = subscriptions[subscriptionId].subscribers;
+    subscriptions[subscriptionId].subscribers = _.without(subscriptions[subscriptionId].subscribers, subscriber);
 
-    if (subscriptions[subscriptionId].subscribers < 1) {
+    if (!subscriptions[subscriptionId].subscribers.length) {
       subscriptions[subscriptionId].cursor.close();
       delete subscriptions[subscriptionId];
     }
     return {
-      unsubscribed: true,
-      subscribers: subscribers
+      unsubscribed: true
     };
   };
 }

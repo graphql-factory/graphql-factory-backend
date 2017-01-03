@@ -474,11 +474,13 @@ export default class GraphQLFactoryBackendCompiler {
     // unsubscribe default gets set args
     if (operation === SUBSCRIPTION && opName === UNSUBSCRIBE) {
       return {
-        subscription: { type: 'String', nullable: false }
+        subscription: { type: 'String', nullable: false },
+        subscriber: { type: 'String' }
       }
     }
 
-    if (operation === QUERY) args.limit = {type: 'Int'}
+    if (operation === QUERY) args.limit = { type: 'Int' }
+    if (operation === SUBSCRIPTION && opName === SUBSCRIBE) args.subscriber = { type: 'String' }
 
     _.forEach(fields, (fieldDef, fieldName) => {
       let type = getType(fieldDef)

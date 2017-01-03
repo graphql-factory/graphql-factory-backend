@@ -4,8 +4,9 @@ export default {
       type: 'String',
       nullable: false
     },
-    subscribers: {
-      type: 'Int'
+    subscriber: {
+      type: 'String',
+      nullable: false
     }
   }
 }

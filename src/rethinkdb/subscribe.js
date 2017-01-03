@@ -1,10 +1,13 @@
 import _ from 'lodash'
+import hat from 'hat'
 import Promise from 'bluebird'
 import { getRelationFilter, getArgsFilter } from './filter'
 
 export default function subscribe (backend, type) {
   return function (source, args, context = {}, info) {
     let { r, connection, definition, asError, _temporalExtension, subscriptions } = backend
+    let subscriber = _.get(args, 'subscriber', hat())
+    delete args.subscriber
 
     // temporal plugin details
     let temporalDef = _.get(definition, `types["${type}"]["${_temporalExtension}"]`, {})
@@ -82,14 +85,16 @@ export default function subscribe (backend, type) {
             try {
               // create the subscriptionId and the response payload
               let subscriptionId = backend.toMD5Hash(error.msg)
-              let payload = { subscription: `subscription:${subscriptionId}` }
+              let payload = { subscription: `subscription:${subscriptionId}`, subscriber }
 
               // check if the subscript is already active
               // if it is, add a subscriber to the count
               // potentially add a ping to the client to determine if they are still listening
               if (_.has(subscriptions, subscriptionId)) {
-                subscriptions[subscriptionId].subscribers++
-                payload.subscribers = subscriptions[subscriptionId].subscribers
+                subscriptions[subscriptionId].subscribers = _.union(
+                  subscriptions[subscriptionId].subscribers,
+                  [subscriber]
+                )
                 return resolve(payload)
               }
 
@@ -100,11 +105,8 @@ export default function subscribe (backend, type) {
                 subscriptions[subscriptionId] = {
                   data: {},
                   cursor,
-                  subscribers: 1
+                  subscribers: [subscriber]
                 }
-
-                // set the subscribers count
-                payload.subscribers = 1
 
                 // add the event monitor
                 cursor.each((change) => {
