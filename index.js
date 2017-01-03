@@ -2013,77 +2013,79 @@ function subscribe(backend, type) {
 
         filter = getArgsFilter(backend, type, args, filter);
 
-        // add standard query modifiers
-        if (_.isNumber(args.limit)) filter = filter.limit(args.limit);
-
         // if not a many relation, return only a single result or null
-        if (!many) {
-          filter = filter.coerceTo('array').do(function (objs) {
-            return objs.count().eq(0).branch(r.expr(null), r.expr(objs).nth(0));
-          });
+        filter = many ? filter : filter.nth(0).default(null);
+
+        try {
+          var _ret = function () {
+            // create the subscriptionId and the response payload
+            var subscriptionId = backend.toMD5Hash(JSON.stringify(args) + filter.toString());
+            var payload = { subscription: 'subscription:' + subscriptionId, subscriber: subscriber };
+
+            // check if the subscript is already active
+            // if it is, add a subscriber to the count
+            // potentially add a ping to the client to determine if they are still listening
+            if (_.has(subscriptions, subscriptionId)) {
+              subscriptions[subscriptionId].subscribers = _.union(subscriptions[subscriptionId].subscribers, [subscriber]);
+              return {
+                v: resolve(payload)
+              };
+            }
+
+            return {
+              v: filter.changes().run(connection).then(function (cursor) {
+                // add the new subscription
+                subscriptions[subscriptionId] = {
+                  data: {},
+                  cursor: cursor,
+                  subscribers: [subscriber]
+                };
+
+                // send the payload before starting the cursor read
+                resolve(payload);
+
+                // add the event monitor
+                return cursor.each(function (err, change) {
+                  if (err) {
+                    return backend.emit('subscription:' + subscriptionId, {
+                      errors: _.isArray(err) ? err : [err]
+                    });
+                  }
+                  // run the after hook on each change
+                  return afterHook.call(_this, change, args, backend, function (err, data) {
+                    if (err) {
+                      return backend.emit('subscription:' + subscriptionId, {
+                        data: data,
+                        errors: _.isArray(err) ? err : [err]
+                      });
+                    }
+                    subscriptions[subscriptionId].data = data;
+                    backend.emit('subscription:' + subscriptionId, { data: data });
+                  });
+                });
+              }).catch(function (err) {
+                reject(asError(err));
+              })
+            };
+          }();
+
+          if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
+        } catch (err) {
+          return reject(asError(err));
         }
 
-        return filter.do(function (query) {
-          return r.error(r.expr('SUBSCRIPTION:').add(query.coerceTo('STRING')));
-        }).run(connection).then(function (result) {
-          throw result;
-        }).catch(function (error) {
-          if (!_.has(error, 'msg')) return reject(asError(error));
-          if (!error.msg.match(/^SUBSCRIPTION:.+/)) return reject(asError(error));
-
-          try {
-            var _ret = function () {
-              // create the subscriptionId and the response payload
-              var subscriptionId = backend.toMD5Hash(error.msg);
-              var payload = { subscription: 'subscription:' + subscriptionId, subscriber: subscriber };
-
-              // check if the subscript is already active
-              // if it is, add a subscriber to the count
-              // potentially add a ping to the client to determine if they are still listening
-              if (_.has(subscriptions, subscriptionId)) {
-                subscriptions[subscriptionId].subscribers = _.union(subscriptions[subscriptionId].subscribers, [subscriber]);
-                return {
-                  v: resolve(payload)
-                };
-              }
-
-              return {
-                v: filter.changes().run(connection, function (err, cursor) {
-                  if (err) return reject(asError(err));
-
-                  // add the new subscription
-                  subscriptions[subscriptionId] = {
-                    data: {},
-                    cursor: cursor,
-                    subscribers: [subscriber]
-                  };
-
-                  // add the event monitor
-                  cursor.each(function (change) {
-                    // run the after hook on each change
-                    return afterHook.call(_this, change, args, backend, function (err, data) {
-                      if (err) {
-                        return backend.emit('subscription:' + subscriptionId, {
-                          data: data,
-                          errors: _.isArray(err) ? err : [err]
-                        });
-                      }
-                      subscriptions[subscriptionId].data = change;
-                      backend.emit('subscription:' + subscriptionId, { data: data });
-                    });
-                  });
-
-                  // return the payload
-                  return resolve(payload);
-                })
-              };
-            }();
-
-            if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
-          } catch (err) {
-            return reject(asError(err));
-          }
-        });
+        /*
+        return filter.do((query) => r.error(r.expr('SUBSCRIPTION:').add(query.coerceTo('STRING'))))
+          .run(connection)
+          .then((result) => {
+            throw result
+          })
+          .catch((error) => {
+             console.log(error)
+            if (!_.has(error, 'msg')) return reject(asError(error))
+            if (!error.msg.match(/^SUBSCRIPTION:.+/)) return reject(asError(error))
+            })
+          */
       });
     }).timeout(timeout || 10000);
   };

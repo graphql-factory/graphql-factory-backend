@@ -63,73 +63,79 @@ export default function subscribe (backend, type) {
 
         filter = getArgsFilter(backend, type, args, filter)
 
-        // add standard query modifiers
-        if (_.isNumber(args.limit)) filter = filter.limit(args.limit)
-
         // if not a many relation, return only a single result or null
-        if (!many) {
-          filter = filter.coerceTo('array').do((objs) => {
-            return objs.count().eq(0).branch(r.expr(null), r.expr(objs).nth(0))
-          })
+        filter = many ? filter : filter.nth(0).default(null)
+
+        try {
+          // create the subscriptionId and the response payload
+          let subscriptionId = backend.toMD5Hash(JSON.stringify(args) + filter.toString())
+          let payload = { subscription: `subscription:${subscriptionId}`, subscriber }
+
+          // check if the subscript is already active
+          // if it is, add a subscriber to the count
+          // potentially add a ping to the client to determine if they are still listening
+          if (_.has(subscriptions, subscriptionId)) {
+            subscriptions[subscriptionId].subscribers = _.union(
+              subscriptions[subscriptionId].subscribers,
+              [subscriber]
+            )
+            return resolve(payload)
+          }
+
+          return filter.changes().run(connection)
+            .then((cursor) => {
+              // add the new subscription
+              subscriptions[subscriptionId] = {
+                data: {},
+                cursor,
+                subscribers: [subscriber]
+              }
+
+              // send the payload before starting the cursor read
+              resolve(payload)
+
+              // add the event monitor
+              return cursor.each((err, change) => {
+                if (err) {
+                  return backend.emit(`subscription:${subscriptionId}`, {
+                    errors: _.isArray(err) ? err : [err]
+                  })
+                }
+                // run the after hook on each change
+                return afterHook.call(this, change, args, backend, (err, data) => {
+                  if (err) {
+                    return backend.emit(`subscription:${subscriptionId}`, {
+                      data,
+                      errors: _.isArray(err) ? err : [err]
+                    })
+                  }
+                  subscriptions[subscriptionId].data = data
+                  backend.emit(`subscription:${subscriptionId}`, { data })
+                })
+              })
+            })
+            .catch((err) => {
+              reject(asError(err))
+            })
+        } catch (err) {
+          return reject(asError(err))
         }
 
+        /*
         return filter.do((query) => r.error(r.expr('SUBSCRIPTION:').add(query.coerceTo('STRING'))))
           .run(connection)
           .then((result) => {
             throw result
           })
           .catch((error) => {
+
+            console.log(error)
             if (!_.has(error, 'msg')) return reject(asError(error))
             if (!error.msg.match(/^SUBSCRIPTION:.+/)) return reject(asError(error))
 
-            try {
-              // create the subscriptionId and the response payload
-              let subscriptionId = backend.toMD5Hash(error.msg)
-              let payload = { subscription: `subscription:${subscriptionId}`, subscriber }
 
-              // check if the subscript is already active
-              // if it is, add a subscriber to the count
-              // potentially add a ping to the client to determine if they are still listening
-              if (_.has(subscriptions, subscriptionId)) {
-                subscriptions[subscriptionId].subscribers = _.union(
-                  subscriptions[subscriptionId].subscribers,
-                  [subscriber]
-                )
-                return resolve(payload)
-              }
-
-              return filter.changes().run(connection, (err, cursor) => {
-                if (err) return reject(asError(err))
-
-                // add the new subscription
-                subscriptions[subscriptionId] = {
-                  data: {},
-                  cursor,
-                  subscribers: [subscriber]
-                }
-
-                // add the event monitor
-                cursor.each((change) => {
-                  // run the after hook on each change
-                  return afterHook.call(this, change, args, backend, (err, data) => {
-                    if (err) {
-                      return backend.emit(`subscription:${subscriptionId}`, {
-                        data,
-                        errors: _.isArray(err) ? err : [err]
-                      })
-                    }
-                    subscriptions[subscriptionId].data = change
-                    backend.emit(`subscription:${subscriptionId}`, { data })
-                  })
-                })
-
-                // return the payload
-                return resolve(payload)
-              })
-            } catch (err) {
-              return reject(asError(err))
-            }
           })
+          */
       })
     })
       .timeout(timeout || 10000)
