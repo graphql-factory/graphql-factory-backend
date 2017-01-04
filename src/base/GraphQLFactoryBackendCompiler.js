@@ -467,7 +467,7 @@ export default class GraphQLFactoryBackendCompiler {
     if (operation === SUBSCRIPTION && opName === UNSUBSCRIBE) {
       return {
         subscription: { type: 'String', nullable: false },
-        subscriber: { type: 'String' }
+        subscriber: { type: 'String', nullable: false }
       }
     }
 

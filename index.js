@@ -9,19 +9,6 @@ var Promise$1 = _interopDefault(require('bluebird'));
 var Events = _interopDefault(require('events'));
 var md5 = _interopDefault(require('md5'));
 
-var GraphQLFactorySubscribeResponse = {
-  fields: {
-    subscription: {
-      type: 'String',
-      nullable: false
-    },
-    subscriber: {
-      type: 'String',
-      nullable: false
-    }
-  }
-};
-
 var GraphQLFactoryUnsubscribeResponse = {
   fields: {
     unsubscribed: {
@@ -32,7 +19,6 @@ var GraphQLFactoryUnsubscribeResponse = {
 };
 
 var types = {
-  GraphQLFactorySubscribeResponse: GraphQLFactorySubscribeResponse,
   GraphQLFactoryUnsubscribeResponse: GraphQLFactoryUnsubscribeResponse
 };
 
@@ -655,7 +641,7 @@ var GraphQLFactoryBackendCompiler = function () {
       if (operation === SUBSCRIPTION && opName === UNSUBSCRIBE) {
         return {
           subscription: { type: 'String', nullable: false },
-          subscriber: { type: 'String' }
+          subscriber: { type: 'String', nullable: false }
         };
       }
 
@@ -1911,6 +1897,49 @@ function del(backend, type) {
   };
 }
 
+function selectionArguments(selections) {
+  var args = {};
+
+  _.forEach(selections, function (selection, idx) {
+    var name = selection.name,
+        selectionSet = selection.selectionSet;
+
+
+    var key = _.get(name, 'name', '' + idx);
+    args[key] = {};
+    _.forEach(selection.arguments, function (arg) {
+      args[key][_.get(arg, 'name.value')] = _.get(arg, 'value.value');
+    });
+
+    if (selectionSet) args._subquery = selectionArguments(selectionSet.selections);
+  });
+
+  return args;
+}
+
+function subscriptionArguments(graphql, requestString) {
+  var args = [];
+  var Kind = graphql.Kind;
+  var request = _.isObject(requestString) ? { definitions: [requestString] } : graphql.parse(requestString);
+
+  _.forEach(request.definitions, function (definition, idx) {
+    var kind = definition.kind,
+        name = definition.name,
+        operation = definition.operation,
+        selectionSet = definition.selectionSet;
+
+
+    if (kind === Kind.OPERATION_DEFINITION && operation === 'subscription') {
+      args.push({
+        name: _.get(name, 'value', '' + idx),
+        argument: selectionArguments(selectionSet.selections)
+      });
+    }
+  });
+
+  return args;
+}
+
 function subscriptionEvent(name) {
   var args = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
@@ -1929,6 +1958,9 @@ function subscribe(backend, type) {
 
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
+
+    console.log(JSON.stringify(subscriptionArguments(backend.graphql, info.operation), null, '  '));
+
     var r = backend.r,
         connection = backend.connection,
         definition = backend.definition,
@@ -2098,16 +2130,25 @@ function unsubscribe(backend) {
     var subscriptions = backend.subscriptions,
         GraphQLError = backend.GraphQLError;
 
+    // check for subscription id
 
-    var subscriptionId = subscription.replace(/^subscription:/i, '');
+    if (!_.has(subscriptions, subscription)) throw new GraphQLError('invalid subscription id');
 
-    if (!_.has(subscriptions, subscriptionId)) throw new GraphQLError('invalid subscription id');
-    subscriptions[subscriptionId].subscribers = _.without(subscriptions[subscriptionId].subscribers, subscriber);
-
-    if (!subscriptions[subscriptionId].subscribers.length) {
-      subscriptions[subscriptionId].cursor.close();
-      delete subscriptions[subscriptionId];
+    // check that user is actually subscribed
+    if (!_.includes(_.get(subscriptions, subscription), subscriber)) {
+      throw new GraphQLError('subscriber ' + subscriber + ' not found on subscription ' + subscription);
     }
+
+    // remove the user from the subscribers list
+    subscriptions[subscription].subscribers = _.without(subscriptions[subscription].subscribers, subscriber);
+
+    // if there are no more subscribers, close the cursor and remove the subscription
+    if (!subscriptions[subscription].subscribers.length) {
+      subscriptions[subscription].cursor.close();
+      delete subscriptions[subscription];
+    }
+
+    // tell the user they are unsubscribed
     return {
       unsubscribed: true
     };

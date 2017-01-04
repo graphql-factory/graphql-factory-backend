@@ -21,7 +21,9 @@ function selectionArguments (selections) {
 export default function subscriptionArguments (graphql, requestString) {
   let args = []
   let Kind = graphql.Kind
-  let request = graphql.parse(requestString)
+  let request = _.isObject(requestString)
+    ? { definitions: [requestString] }
+    : graphql.parse(requestString)
 
   _.forEach(request.definitions, (definition, idx) => {
     let { kind, name, operation, selectionSet } = definition

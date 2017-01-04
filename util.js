@@ -28,7 +28,7 @@ function selectionArguments(selections) {
 function subscriptionArguments(graphql, requestString) {
   var args = [];
   var Kind = graphql.Kind;
-  var request = graphql.parse(requestString);
+  var request = _.isObject(requestString) ? { definitions: [requestString] } : graphql.parse(requestString);
 
   _.forEach(request.definitions, function (definition, idx) {
     var kind = definition.kind,
@@ -61,14 +61,28 @@ function subscriptionEvent(name) {
 }
 
 function subscriptionDetails(graphql, requestString) {
-  return _.map(subscriptionArguments(graphql, requestString), function (arg) {
+  var details = {
+    subscribe: [],
+    unsubscribe: []
+  };
+
+  _.forEach(subscriptionArguments(graphql, requestString), function (arg) {
     var name = arg.name,
         argument = arg.argument;
 
-    return _.merge({}, arg, {
-      subscription: subscriptionEvent(name, argument)
-    });
+    var subscription = subscriptionEvent(name, argument);
+
+    if (name.match(/^unsubscribe.*/)) {
+      details.unsubscribe.push(subscription);
+    } else {
+      details.subscribe.push(_.merge({}, arg, {
+        subscription: subscription
+      }));
+    }
   });
+  details.operations = details.subscribe.length + details.unsubscribe.length;
+
+  return details;
 }
 
 function subscriptionNames(graphql, requestString) {
