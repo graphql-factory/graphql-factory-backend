@@ -6,7 +6,7 @@ function selectionArguments (selections) {
   _.forEach(selections, (selection, idx) => {
     let { name, selectionSet } = selection
 
-    let key = _.get(name, 'name', `${idx}`)
+    let key = _.get(name, 'value', `${idx}`)
     args[key] = {}
     _.forEach(selection.arguments, (arg) => {
       args[key][_.get(arg, 'name.value')] = _.get(arg, 'value.value')

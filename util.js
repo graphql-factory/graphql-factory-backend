@@ -13,7 +13,7 @@ function selectionArguments(selections) {
         selectionSet = selection.selectionSet;
 
 
-    var key = _.get(name, 'name', '' + idx);
+    var key = _.get(name, 'value', '' + idx);
     args[key] = {};
     _.forEach(selection.arguments, function (arg) {
       args[key][_.get(arg, 'name.value')] = _.get(arg, 'value.value');
