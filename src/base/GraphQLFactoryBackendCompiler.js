@@ -355,7 +355,11 @@ export default class GraphQLFactoryBackendCompiler {
           let ops = [SUBSCRIBE, UNSUBSCRIBE]
           let fieldName = _.includes(ops, name) ? `${name}${typeName}` : name
           let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
-          let returnType = name === UNSUBSCRIBE ? 'GraphQLFactoryUnsubscribeResponse' : type
+          let returnType = name === UNSUBSCRIBE
+            ? 'GraphQLFactoryUnsubscribeResponse'
+            : type
+              ? type
+              : [typeName]
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
             type: returnType,

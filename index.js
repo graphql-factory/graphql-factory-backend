@@ -532,7 +532,7 @@ var GraphQLFactoryBackendCompiler = function () {
             var ops = [SUBSCRIBE, UNSUBSCRIBE];
             var fieldName = _.includes(ops, name) ? '' + name + typeName : name;
             var resolveName = _.isString(resolve) ? resolve : 'backend_' + fieldName;
-            var returnType = name === UNSUBSCRIBE ? 'GraphQLFactoryUnsubscribeResponse' : type;
+            var returnType = name === UNSUBSCRIBE ? 'GraphQLFactoryUnsubscribeResponse' : type ? type : [typeName];
 
             _.set(_this5.definition.types, '["' + objName + '"].fields["' + fieldName + '"]', {
               type: returnType,
@@ -1917,8 +1917,7 @@ function subscriptionEvent(name) {
   if (!name) throw new Error('subscriptionEvent creation requires a subscription name');
 
   try {
-    delete args.subscriber;
-    return 'subscription:' + md5('name:' + JSON.stringify(args));
+    return 'subscription:' + md5('name:' + JSON.stringify(_.omit(args, ['subscriber'])));
   } catch (err) {
     throw new Error('Unable to create subscription event, arguments may have a cyclical reference');
   }

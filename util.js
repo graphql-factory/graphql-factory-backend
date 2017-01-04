@@ -2,6 +2,7 @@
 
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
+var _ = _interopDefault(require('lodash'));
 var md5 = _interopDefault(require('md5'));
 
 function subscriptionEvent(name) {
@@ -10,8 +11,7 @@ function subscriptionEvent(name) {
   if (!name) throw new Error('subscriptionEvent creation requires a subscription name');
 
   try {
-    delete args.subscriber;
-    return 'subscription:' + md5('name:' + JSON.stringify(args));
+    return 'subscription:' + md5('name:' + JSON.stringify(_.omit(args, ['subscriber'])));
   } catch (err) {
     throw new Error('Unable to create subscription event, arguments may have a cyclical reference');
   }
