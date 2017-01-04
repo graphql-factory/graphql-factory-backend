@@ -1945,8 +1945,14 @@ function subscriptionEvent(name) {
 
   if (!name) throw new Error('subscriptionEvent creation requires a subscription name');
 
+  var subArgs = _.cloneDeep(args);
+
+  _.forEach(subArgs, function (arg) {
+    if (arg.subscriber) arg.subscriber = undefined;
+  });
+
   try {
-    return 'subscription:' + md5('name:' + JSON.stringify(_.omit(args, ['subscriber'])));
+    return 'subscription:' + md5('name:' + JSON.stringify(subArgs));
   } catch (err) {
     throw new Error('Unable to create subscription event, arguments may have a cyclical reference');
   }
