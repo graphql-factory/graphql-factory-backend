@@ -1,5 +1,4 @@
 import _ from 'lodash'
-import crypto from 'crypto'
 import Promise from 'bluebird'
 import Events from 'events'
 import FactoryBackendDefinition from '../graphql/index'
@@ -266,11 +265,6 @@ export default class GraphQLFactoryBaseBackend extends Events {
       newArgs = _.merge(newArgs, { [primaryKey]: pk })
     }
     return newArgs
-  }
-
-  toMD5Hash (data) {
-    if (!_.isString(data)) throw new Error('hash data must be string')
-    return crypto.createHash('md5').update(data).digest('hex')
   }
 
   /******************************************************************

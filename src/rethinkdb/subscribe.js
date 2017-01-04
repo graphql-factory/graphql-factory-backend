@@ -1,13 +1,17 @@
 import _ from 'lodash'
-import hat from 'hat'
 import Promise from 'bluebird'
+import { SUBSCRIBE } from '../base/GraphQLFactoryBackendCompiler'
+import { subscriptionEvent } from '../common/index'
 import { getRelationFilter, getArgsFilter } from './filter'
 
 export default function subscribe (backend, type) {
   return function (source, args, context = {}, info) {
     let { r, connection, definition, asError, _temporalExtension, subscriptions } = backend
-    let subscriber = _.get(args, 'subscriber', hat())
+    let { subscriber } = args
     delete args.subscriber
+
+    // use the un-modified args for creating a subscription id
+    let subArgs = _.cloneDeep(args)
 
     // temporal plugin details
     let temporalDef = _.get(definition, `types["${type}"]["${_temporalExtension}"]`, {})
@@ -79,15 +83,14 @@ export default function subscribe (backend, type) {
 
         try {
           // create the subscriptionId and the response payload
-          console.log('ADDING SUBSCRIPTION', filter.toString())
-          let subscriptionId = backend.toMD5Hash(JSON.stringify(args) + filter.toString())
-          let payload = { subscription: `subscription:${subscriptionId}`, subscriber }
+          let subscriptionId = subscriptionEvent(`${SUBSCRIBE}${type}`, subArgs)
+          let payload = { subscription: subscriptionId, subscriber }
 
           // check if the subscript is already active
           // if it is, add a subscriber to the count
           // potentially add a ping to the client to determine if they are still listening
           if (_.has(subscriptions, subscriptionId)) {
-            console.log('found subscription id')
+            console.log('found subscription id', subscriptionId)
             subscriptions[subscriptionId].subscribers = _.union(
               subscriptions[subscriptionId].subscribers,
               [subscriber]
@@ -95,7 +98,9 @@ export default function subscribe (backend, type) {
             return resolve(payload)
           }
 
-          return filter.changes().run(connection)
+          console.log('ADDING NEW SUBSCRIPTION', subscriptionId)
+
+          return filter.changes()('new_val').run(connection)
             .then((cursor) => {
               // add the new subscription
               subscriptions[subscriptionId] = {
@@ -111,7 +116,7 @@ export default function subscribe (backend, type) {
               return cursor.each((err, change) => {
                 if (err) {
                   console.log('err', err)
-                  return backend.emit(`subscription:${subscriptionId}`, {
+                  return backend.emit(subscriptionId, {
                     errors: _.isArray(err) ? err : [err]
                   })
                 }
@@ -121,13 +126,12 @@ export default function subscribe (backend, type) {
                 // run the after hook on each change
                 return afterHook.call(this, change, args, backend, (err, data) => {
                   if (err) {
-                    return backend.emit(`subscription:${subscriptionId}`, {
+                    return backend.emit(subscriptionId, {
                       data,
                       errors: _.isArray(err) ? err : [err]
                     })
                   }
-                  subscriptions[subscriptionId].data = data
-                  backend.emit(`subscription:${subscriptionId}`, { data })
+                  backend.emit(subscriptionId, { data })
                 })
               })
             })
@@ -137,22 +141,6 @@ export default function subscribe (backend, type) {
         } catch (err) {
           return reject(asError(err))
         }
-
-        /*
-        return filter.do((query) => r.error(r.expr('SUBSCRIPTION:').add(query.coerceTo('STRING'))))
-          .run(connection)
-          .then((result) => {
-            throw result
-          })
-          .catch((error) => {
-
-            console.log(error)
-            if (!_.has(error, 'msg')) return reject(asError(error))
-            if (!error.msg.match(/^SUBSCRIPTION:.+/)) return reject(asError(error))
-
-
-          })
-          */
       })
     })
       .timeout(timeout || 10000)

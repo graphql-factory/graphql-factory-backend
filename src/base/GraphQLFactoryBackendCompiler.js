@@ -355,19 +355,7 @@ export default class GraphQLFactoryBackendCompiler {
           let ops = [SUBSCRIBE, UNSUBSCRIBE]
           let fieldName = _.includes(ops, name) ? `${name}${typeName}` : name
           let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
-          let returnType = type
-
-          // get the proper response type
-          switch (name) {
-            case SUBSCRIBE:
-              returnType = 'GraphQLFactorySubscribeResponse'
-              break
-            case UNSUBSCRIBE:
-              returnType = 'GraphQLFactoryUnsubscribeResponse'
-              break
-            default:
-              break
-          }
+          let returnType = name === UNSUBSCRIBE ? 'GraphQLFactoryUnsubscribeResponse' : type
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
             type: returnType,
@@ -480,7 +468,9 @@ export default class GraphQLFactoryBackendCompiler {
     }
 
     if (operation === QUERY) args.limit = { type: 'Int' }
-    if (operation === SUBSCRIPTION && opName === SUBSCRIBE) args.subscriber = { type: 'String' }
+    if (operation === SUBSCRIPTION && opName === SUBSCRIBE) {
+      args.subscriber = { type: 'String', nullable: false }
+    }
 
     _.forEach(fields, (fieldDef, fieldName) => {
       let type = getType(fieldDef)

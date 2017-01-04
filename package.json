@@ -12,14 +12,16 @@
     "build:copybrc": "cp build/.build.babelrc src/.babelrc",
     "build:rmbrc": "rm -f src/.babelrc",
     "example": "node example/index.js --harmony",
-    "build": "npm run build:copybrc && rollup -c build/rollup.config.js && npm run build:rmbrc",
+    "build:backend": "npm run build:copybrc && rollup -c build/rollup.backend.config.js && npm run build:rmbrc",
+    "build:util": "npm run build:copybrc && rollup -c build/rollup.util.config.js && npm run build:rmbrc",
+    "build": "npm run build:backend && npm run build:util",
     "test": "mocha test/index.js"
   },
   "author": "Branden Horiuchi <bhoriuchi@gmail.com>",
   "dependencies": {
     "bluebird": "^3.4.6",
-    "hat": "^0.0.3",
-    "lodash": "^4.17.2"
+    "lodash": "^4.17.2",
+    "md5": "^2.2.1"
   },
   "devDependencies": {
     "chai": "^3.5.0",

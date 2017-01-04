@@ -5,10 +5,9 @@ Object.defineProperty(exports, '__esModule', { value: true });
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
 var _ = _interopDefault(require('lodash'));
-var crypto = _interopDefault(require('crypto'));
 var Promise$1 = _interopDefault(require('bluebird'));
 var Events = _interopDefault(require('events'));
-var hat = _interopDefault(require('hat'));
+var md5 = _interopDefault(require('md5'));
 
 var GraphQLFactorySubscribeResponse = {
   fields: {
@@ -533,19 +532,7 @@ var GraphQLFactoryBackendCompiler = function () {
             var ops = [SUBSCRIBE, UNSUBSCRIBE];
             var fieldName = _.includes(ops, name) ? '' + name + typeName : name;
             var resolveName = _.isString(resolve) ? resolve : 'backend_' + fieldName;
-            var returnType = type;
-
-            // get the proper response type
-            switch (name) {
-              case SUBSCRIBE:
-                returnType = 'GraphQLFactorySubscribeResponse';
-                break;
-              case UNSUBSCRIBE:
-                returnType = 'GraphQLFactoryUnsubscribeResponse';
-                break;
-              default:
-                break;
-            }
+            var returnType = name === UNSUBSCRIBE ? 'GraphQLFactoryUnsubscribeResponse' : type;
 
             _.set(_this5.definition.types, '["' + objName + '"].fields["' + fieldName + '"]', {
               type: returnType,
@@ -673,7 +660,9 @@ var GraphQLFactoryBackendCompiler = function () {
       }
 
       if (operation === QUERY) args.limit = { type: 'Int' };
-      if (operation === SUBSCRIPTION && opName === SUBSCRIBE) args.subscriber = { type: 'String' };
+      if (operation === SUBSCRIPTION && opName === SUBSCRIBE) {
+        args.subscriber = { type: 'String', nullable: false };
+      }
 
       _.forEach(fields, function (fieldDef, fieldName) {
         var type = getType(fieldDef);
@@ -1098,12 +1087,6 @@ var GraphQLFactoryBaseBackend = function (_Events) {
         newArgs = _.merge(newArgs, defineProperty({}, primaryKey, pk));
       }
       return newArgs;
-    }
-  }, {
-    key: 'toMD5Hash',
-    value: function toMD5Hash(data) {
-      if (!_.isString(data)) throw new Error('hash data must be string');
-      return crypto.createHash('md5').update(data).digest('hex');
     }
 
     /******************************************************************
@@ -1928,6 +1911,19 @@ function del(backend, type) {
   };
 }
 
+function subscriptionEvent(name) {
+  var args = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+
+  if (!name) throw new Error('subscriptionEvent creation requires a subscription name');
+
+  try {
+    delete args.subscriber;
+    return 'subscription:' + md5('name:' + JSON.stringify(args));
+  } catch (err) {
+    throw new Error('Unable to create subscription event, arguments may have a cyclical reference');
+  }
+}
+
 function subscribe(backend, type) {
   return function (source, args) {
     var _this = this;
@@ -1940,9 +1936,12 @@ function subscribe(backend, type) {
         asError = backend.asError,
         _temporalExtension = backend._temporalExtension,
         subscriptions = backend.subscriptions;
+    var subscriber = args.subscriber;
 
-    var subscriber = _.get(args, 'subscriber', hat());
     delete args.subscriber;
+
+    // use the un-modified args for creating a subscription id
+    var subArgs = _.cloneDeep(args);
 
     // temporal plugin details
     var temporalDef = _.get(definition, 'types["' + type + '"]["' + _temporalExtension + '"]', {});
@@ -2026,23 +2025,24 @@ function subscribe(backend, type) {
         try {
           var _ret = function () {
             // create the subscriptionId and the response payload
-            console.log('ADDING SUBSCRIPTION', filter.toString());
-            var subscriptionId = backend.toMD5Hash(JSON.stringify(args) + filter.toString());
-            var payload = { subscription: 'subscription:' + subscriptionId, subscriber: subscriber };
+            var subscriptionId = subscriptionEvent('' + SUBSCRIBE + type, subArgs);
+            var payload = { subscription: subscriptionId, subscriber: subscriber };
 
             // check if the subscript is already active
             // if it is, add a subscriber to the count
             // potentially add a ping to the client to determine if they are still listening
             if (_.has(subscriptions, subscriptionId)) {
-              console.log('found subscription id');
+              console.log('found subscription id', subscriptionId);
               subscriptions[subscriptionId].subscribers = _.union(subscriptions[subscriptionId].subscribers, [subscriber]);
               return {
                 v: resolve(payload)
               };
             }
 
+            console.log('ADDING NEW SUBSCRIPTION', subscriptionId);
+
             return {
-              v: filter.changes().run(connection).then(function (cursor) {
+              v: filter.changes()('new_val').run(connection).then(function (cursor) {
                 // add the new subscription
                 subscriptions[subscriptionId] = {
                   data: {},
@@ -2057,7 +2057,7 @@ function subscribe(backend, type) {
                 return cursor.each(function (err, change) {
                   if (err) {
                     console.log('err', err);
-                    return backend.emit('subscription:' + subscriptionId, {
+                    return backend.emit(subscriptionId, {
                       errors: _.isArray(err) ? err : [err]
                     });
                   }
@@ -2067,13 +2067,12 @@ function subscribe(backend, type) {
                   // run the after hook on each change
                   return afterHook.call(_this, change, args, backend, function (err, data) {
                     if (err) {
-                      return backend.emit('subscription:' + subscriptionId, {
+                      return backend.emit(subscriptionId, {
                         data: data,
                         errors: _.isArray(err) ? err : [err]
                       });
                     }
-                    subscriptions[subscriptionId].data = data;
-                    backend.emit('subscription:' + subscriptionId, { data: data });
+                    backend.emit(subscriptionId, { data: data });
                   });
                 });
               }).catch(function (err) {
@@ -2086,19 +2085,6 @@ function subscribe(backend, type) {
         } catch (err) {
           return reject(asError(err));
         }
-
-        /*
-        return filter.do((query) => r.error(r.expr('SUBSCRIPTION:').add(query.coerceTo('STRING'))))
-          .run(connection)
-          .then((result) => {
-            throw result
-          })
-          .catch((error) => {
-             console.log(error)
-            if (!_.has(error, 'msg')) return reject(asError(error))
-            if (!error.msg.match(/^SUBSCRIPTION:.+/)) return reject(asError(error))
-            })
-          */
       });
     }).timeout(timeout || 10000);
   };
@@ -2284,9 +2270,11 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
 
 var index = {
   GraphQLFactoryBaseBackend: GraphQLFactoryBaseBackend,
-  GraphQLFactoryRethinkDBBackend: GraphQLFactoryRethinkDBBackend
+  GraphQLFactoryRethinkDBBackend: GraphQLFactoryRethinkDBBackend,
+  subscriptionEvent: subscriptionEvent
 };
 
 exports.GraphQLFactoryBaseBackend = GraphQLFactoryBaseBackend;
 exports.GraphQLFactoryRethinkDBBackend = GraphQLFactoryRethinkDBBackend;
+exports.subscriptionEvent = subscriptionEvent;
 exports['default'] = index;
