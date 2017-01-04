@@ -1961,16 +1961,15 @@ function subscribe(backend, type) {
 
     var temporalMostCurrent = _.get(this, 'globals["' + _temporalExtension + '"].temporalMostCurrent');
     var collection = backend.getCollection(type);
+    var filter = collection;
+    var many = true;
 
     // add the date argument to the rootValue
     if (isVersioned) {
       _.set(info, 'rootValue["' + _temporalExtension + '"].date', args.date);
     }
 
-    var _getRelationFilter$ca = getRelationFilter.call(this, backend, type, source, info, collection),
-        filter = _getRelationFilter$ca.filter,
-        many = _getRelationFilter$ca.many;
-
+    // let { filter, many } = getRelationFilter.call(this, backend, type, source, info, collection)
     var fnPath = 'backend_subscribe' + type;
     var beforeHook = _.get(before, fnPath, function (args, backend, done) {
       return done();
@@ -1985,31 +1984,39 @@ function subscribe(backend, type) {
         if (err) return reject(asError(err));
 
         // handle temporal plugin
+        /*
         if (isVersioned && !nested) {
           if (temporalDef.subscribe === false) {
-            return reject(new Error('subscribe is not allowed on this temporal type'));
+            return reject(new Error('subscribe is not allowed on this temporal type'))
           }
           if (_.isFunction(temporalDef.subscribe)) {
-            return resolve(temporalDef.subscribe.call(_this, source, args, context, info));
+            return resolve(temporalDef.subscribe.call(this, source, args, context, info))
           } else if (_.isString(temporalDef.subscribe)) {
-            var temporalSubscribe = _.get(definition, 'functions["' + temporalDef.subscribe + '"]');
+            let temporalSubscribe = _.get(definition, `functions["${temporalDef.subscribe}"]`)
             if (!_.isFunction(temporalSubscribe)) {
-              return reject(new Error('cannot find function "' + temporalDef.subscribe + '"'));
+              return reject(new Error(`cannot find function "${temporalDef.subscribe}"`))
             }
-            return resolve(temporalSubscribe.call(_this, source, args, context, info));
+            return resolve(temporalSubscribe.call(this, source, args, context, info))
           } else {
-            if (!_.keys(args).length && readMostCurrent === true) {
-              filter = temporalMostCurrent(type);
+            let versionFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
+            if (!_.isFunction(versionFilter)) {
+              return reject(new Error(`could not find "temporalFilter" in globals`))
+            }
+            filter = versionFilter(type, args)
+            args = _.omit(args, ['version', 'recordId', 'date', 'id'])
+             if (!_.keys(args).length && readMostCurrent === true) {
+              filter = temporalMostCurrent(type)
             } else {
-              var versionFilter = _.get(_this, 'globals["' + _temporalExtension + '"].temporalFilter');
+              let versionFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
               if (!_.isFunction(versionFilter)) {
-                return reject(new Error('could not find "temporalFilter" in globals'));
+                return reject(new Error(`could not find "temporalFilter" in globals`))
               }
-              filter = versionFilter(type, args);
-              args = _.omit(args, ['version', 'recordId', 'date', 'id']);
+              filter = versionFilter(type, args)
+              args = _.omit(args, ['version', 'recordId', 'date', 'id'])
             }
           }
         }
+        */
 
         filter = getArgsFilter(backend, type, args, filter);
 
@@ -2019,6 +2026,7 @@ function subscribe(backend, type) {
         try {
           var _ret = function () {
             // create the subscriptionId and the response payload
+            console.log('ADDING SUBSCRIPTION', filter.toString());
             var subscriptionId = backend.toMD5Hash(JSON.stringify(args) + filter.toString());
             var payload = { subscription: 'subscription:' + subscriptionId, subscriber: subscriber };
 
@@ -2026,6 +2034,7 @@ function subscribe(backend, type) {
             // if it is, add a subscriber to the count
             // potentially add a ping to the client to determine if they are still listening
             if (_.has(subscriptions, subscriptionId)) {
+              console.log('found subscription id');
               subscriptions[subscriptionId].subscribers = _.union(subscriptions[subscriptionId].subscribers, [subscriber]);
               return {
                 v: resolve(payload)
@@ -2047,10 +2056,14 @@ function subscribe(backend, type) {
                 // add the event monitor
                 return cursor.each(function (err, change) {
                   if (err) {
+                    console.log('err', err);
                     return backend.emit('subscription:' + subscriptionId, {
                       errors: _.isArray(err) ? err : [err]
                     });
                   }
+
+                  console.log('changes', change);
+
                   // run the after hook on each change
                   return afterHook.call(_this, change, args, backend, function (err, data) {
                     if (err) {
