@@ -5,6 +5,49 @@ function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'defau
 var _ = _interopDefault(require('lodash'));
 var md5 = _interopDefault(require('md5'));
 
+function selectionArguments(selections) {
+  var args = {};
+
+  _.forEach(selections, function (selection, idx) {
+    var name = selection.name,
+        selectionSet = selection.selectionSet;
+
+
+    var key = _.get(name, 'name', '' + idx);
+    args[key] = {};
+    _.forEach(selection.arguments, function (arg) {
+      args[key][_.get(arg, 'name.value')] = _.get(arg, 'value.value');
+    });
+
+    if (selectionSet) args._subquery = selectionArguments(selectionSet.selections);
+  });
+
+  return args;
+}
+
+function subscriptionArguments(graphql, requestString) {
+  var args = [];
+  var Kind = graphql.Kind;
+  var request = graphql.parse(requestString);
+
+  _.forEach(request.definitions, function (definition, idx) {
+    var kind = definition.kind,
+        name = definition.name,
+        operation = definition.operation,
+        selectionSet = definition.selectionSet;
+
+
+    if (kind === Kind.OPERATION_DEFINITION && operation === 'subscription') {
+      args.push({
+        name: _.get(name, 'value', '' + idx),
+        argument: selectionArguments(selectionSet.selections)
+      });
+    }
+  });
+
+  return args;
+}
+
 function subscriptionEvent(name) {
   var args = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
@@ -17,8 +60,41 @@ function subscriptionEvent(name) {
   }
 }
 
+function subscriptionDetails(graphql, requestString) {
+  return _.map(subscriptionArguments(graphql, requestString), function (arg) {
+    var name = arg.name,
+        argument = arg.argument;
+
+    return _.merge({}, arg, {
+      subscription: subscriptionEvent(name, argument)
+    });
+  });
+}
+
+function subscriptionNames(graphql, requestString) {
+  var names = [];
+  var Kind = graphql.Kind;
+  var request = graphql.parse(requestString);
+
+  _.forEach(request.definitions, function (definition, idx) {
+    var kind = definition.kind,
+        name = definition.name,
+        operation = definition.operation;
+
+
+    if (kind === Kind.OPERATION_DEFINITION && operation === 'subscription') {
+      names.push(_.get(name, 'value', '' + idx));
+    }
+  });
+
+  return names;
+}
+
 var util = {
-  subscriptionEvent: subscriptionEvent
+  subscriptionArguments: subscriptionArguments,
+  subscriptionDetails: subscriptionDetails,
+  subscriptionEvent: subscriptionEvent,
+  subscriptionNames: subscriptionNames
 };
 
 module.exports = util;

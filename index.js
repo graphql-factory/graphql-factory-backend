@@ -532,7 +532,7 @@ var GraphQLFactoryBackendCompiler = function () {
             var ops = [SUBSCRIBE, UNSUBSCRIBE];
             var fieldName = _.includes(ops, name) ? '' + name + typeName : name;
             var resolveName = _.isString(resolve) ? resolve : 'backend_' + fieldName;
-            var returnType = name === UNSUBSCRIBE ? 'GraphQLFactoryUnsubscribeResponse' : type ? type : [typeName];
+            var returnType = name === UNSUBSCRIBE ? 'GraphQLFactoryUnsubscribeResponse' : type ? _.isArray(type) ? _.first(type) : type : typeName;
 
             _.set(_this5.definition.types, '["' + objName + '"].fields["' + fieldName + '"]', {
               type: returnType,

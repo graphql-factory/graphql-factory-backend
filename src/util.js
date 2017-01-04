@@ -1,5 +1,13 @@
-import { subscriptionEvent } from './common/index'
+import {
+  subscriptionArguments,
+  subscriptionDetails,
+  subscriptionEvent,
+  subscriptionNames
+} from './common/index'
 
 export default {
-  subscriptionEvent
+  subscriptionArguments,
+  subscriptionDetails,
+  subscriptionEvent,
+  subscriptionNames
 }
