@@ -76,7 +76,6 @@ function subscriptionDetails(graphql, requestString) {
     var name = arg.name,
         argument = arg.argument;
 
-    console.log(JSON.stringify(argument, null, '  '));
     var subscription = subscriptionEvent(name, argument);
 
     if (name.match(/^unsubscribe.*/)) {
@@ -90,6 +89,10 @@ function subscriptionDetails(graphql, requestString) {
   details.operations = details.subscribe.length + details.unsubscribe.length;
 
   return details;
+}
+
+function getSubscriptionEvents(graphql, requestString) {
+  return _.map(subscriptionDetails(graphql, requestString).subscribe, 'subscription');
 }
 
 function subscriptionNames(graphql, requestString) {
@@ -112,6 +115,7 @@ function subscriptionNames(graphql, requestString) {
 }
 
 var util = {
+  getSubscriptionEvents: getSubscriptionEvents,
   subscriptionArguments: subscriptionArguments,
   subscriptionDetails: subscriptionDetails,
   subscriptionEvent: subscriptionEvent,

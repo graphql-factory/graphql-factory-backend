@@ -1,4 +1,5 @@
 import {
+  getSubscriptionEvents,
   subscriptionArguments,
   subscriptionDetails,
   subscriptionEvent,
@@ -6,6 +7,7 @@ import {
 } from './common/index'
 
 export default {
+  getSubscriptionEvents,
   subscriptionArguments,
   subscriptionDetails,
   subscriptionEvent,

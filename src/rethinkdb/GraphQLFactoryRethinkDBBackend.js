@@ -8,6 +8,7 @@ import deleteResolver from './delete'
 import subscribeResolver from './subscribe'
 import unsubscribeResolver from './unsubscribe'
 import initStore from './initStore'
+import SubscriptionManager from './SubscriptionManager'
 
 import GraphQLFactoryBaseBackend from '../base/GraphQLFactroyBaseBackend'
 
@@ -29,6 +30,9 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
     // utils
     this.filter = filter
     this.q = q(this)
+
+    // subscription manager
+    this.subscriptionManager = new SubscriptionManager(this)
 
     // add values to the globals namespace
     _.merge(this.definition.globals, { [namespace]: { r, connection } })

@@ -935,9 +935,11 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     key: 'getPrimaryFromArgs',
     value: function getPrimaryFromArgs(type, args) {
       var _getTypeComputed = this.getTypeComputed(type),
-          primary = _getTypeComputed.primary;
+          primary = _getTypeComputed.primary,
+          primaryKey = _getTypeComputed.primaryKey;
 
-      if (!primary) throw 'Unable to obtain primary';
+      if (!primary || !primaryKey) throw 'Unable to obtain primary';
+      if (_.has(args, '[' + primaryKey + '"]')) return args[primaryKey];
       var pk = _.map(_.isArray(primary) ? primary : [primary], function (k) {
         return _.get(args, k);
       });
@@ -999,14 +1001,57 @@ var GraphQLFactoryBaseBackend = function (_Events) {
       return _ref2 = {}, defineProperty(_ref2, this._extension, typeDef[this._extension]), defineProperty(_ref2, 'before', before), defineProperty(_ref2, 'after', after), defineProperty(_ref2, 'timeout', timeout), defineProperty(_ref2, 'collection', collection), defineProperty(_ref2, 'store', store), defineProperty(_ref2, 'fields', typeDef.fields), defineProperty(_ref2, 'primary', primary), defineProperty(_ref2, 'primaryKey', primaryKey), defineProperty(_ref2, 'nested', nested), defineProperty(_ref2, 'currentPath', currentPath), defineProperty(_ref2, 'belongsTo', belongsTo), defineProperty(_ref2, 'has', has), _ref2;
     }
   }, {
-    key: 'getRelatedValues',
-    value: function getRelatedValues(type, args) {
+    key: 'getRequestFields',
+    value: function getRequestFields(type, info) {
       var _this4 = this;
 
-      var values = [];
+      var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+      var maxDepth = options.maxDepth,
+          includeRelated = options.includeRelated;
 
       var _getTypeDefinition = this.getTypeDefinition(type),
           fields = _getTypeDefinition.fields;
+
+      var fieldNode = _.first(_.filter(info.fieldNodes || info.fieldASTs, function (node) {
+        return _.get(node, 'name.value') === info.fieldName;
+      }));
+      includeRelated = _.isBoolean(includeRelated) ? includeRelated : true;
+
+      // parses the selection set recursively building a REQL style pluck filter
+      var parseSelection = function parseSelection(selectionSet, level) {
+        var obj = {};
+        level += 1;
+
+        _.forEach(selectionSet.selections, function (selection) {
+          var name = _.get(selection, 'name.value');
+          var fieldType = _.get(fields, '["' + name + '"].type');
+          var fieldTypeName = _.isArray(fieldType) ? _.first(fieldType) : fieldType;
+          var isRelation = _.has(_this4.definition.getType(fieldTypeName), '["' + _this4._extension + '"].computed.collection');
+
+          // check relation
+          if (!isRelation || isRelation && includeRelated) {
+            if (!selection.selectionSet) {
+              obj[name] = true;
+            } else {
+              obj[name] = _.isNumber(maxDepth) && level >= maxDepth ? true : parseSelection(selection.selectionSet, level);
+            }
+          }
+        });
+        return obj;
+      };
+
+      // call parse on main field node selection set with an inital level of 0
+      return fieldNode.selectionSet ? parseSelection(fieldNode.selectionSet, 0) : {};
+    }
+  }, {
+    key: 'getRelatedValues',
+    value: function getRelatedValues(type, args) {
+      var _this5 = this;
+
+      var values = [];
+
+      var _getTypeDefinition2 = this.getTypeDefinition(type),
+          fields = _getTypeDefinition2.fields;
 
       _.forEach(args, function (arg, name) {
         var fieldDef = _.get(fields, name, {});
@@ -1014,7 +1059,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
         var fieldType = _.get(fieldDef, 'type', fieldDef);
         var isList = _.isArray(fieldType);
         var type = isList && fieldType.length === 1 ? fieldType[0] : fieldType;
-        var computed = _this4.getTypeComputed(type);
+        var computed = _this5.getTypeComputed(type);
         if (computed && related) {
           (function () {
             var store = computed.store,
@@ -1083,7 +1128,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
   }, {
     key: 'initAllStores',
     value: function initAllStores(rebuild, seedData) {
-      var _this5 = this;
+      var _this6 = this;
 
       if (!_.isBoolean(rebuild)) {
         seedData = _.isObject(rebuild) ? rebuild : {};
@@ -1092,15 +1137,15 @@ var GraphQLFactoryBaseBackend = function (_Events) {
 
       // only init definitions with a collection and store specified
       var canInit = function canInit() {
-        return _.keys(_.pickBy(_this5.definition.types, function (typeDef) {
-          var computed = _.get(typeDef, _this5._extension + '.computed', {});
+        return _.keys(_.pickBy(_this6.definition.types, function (typeDef) {
+          var computed = _.get(typeDef, _this6._extension + '.computed', {});
           return _.has(computed, 'collection') && _.has(computed, 'store');
         }));
       };
 
       return Promise$1.map(canInit(), function (type) {
         var data = _.get(seedData, type, []);
-        return _this5.initStore(type, rebuild, _.isArray(data) ? data : []);
+        return _this6.initStore(type, rebuild, _.isArray(data) ? data : []);
       }).then(function (res) {
         return res;
       }).catch(function (err) {
@@ -1116,12 +1161,12 @@ var GraphQLFactoryBaseBackend = function (_Events) {
   }, {
     key: 'plugin',
     get: function get() {
-      var _this6 = this;
+      var _this7 = this;
 
       if (!this._plugin) {
         // remove the backend from non-object types
         this.definition.types = _.mapValues(this.definition.types, function (definition) {
-          return definition.type === 'Object' ? definition : _.omit(definition, _this6._extension);
+          return definition.type === 'Object' ? definition : _.omit(definition, _this7._extension);
         });
         this._plugin = _.merge({}, this.definition.plugin, { name: this.name });
       }
@@ -1959,7 +2004,7 @@ function subscriptionEvent(name) {
   }
 }
 
-function subscribe(backend, type) {
+function subscribe$1(backend, type) {
   return function (source, args) {
     var _this = this;
 
@@ -1969,11 +2014,11 @@ function subscribe(backend, type) {
         connection = backend.connection,
         definition = backend.definition,
         asError = backend.asError,
-        _temporalExtension = backend._temporalExtension,
-        subscriptions = backend.subscriptions;
+        _temporalExtension = backend._temporalExtension;
     var subscriber = args.subscriber;
 
     delete args.subscriber;
+    var requestFields = backend.getRequestFields(type, info, { maxDepth: 1, includeRelated: false });
 
     // temporal plugin details
     var temporalDef = _.get(definition, 'types["' + type + '"]["' + _temporalExtension + '"]', {});
@@ -2014,63 +2059,24 @@ function subscribe(backend, type) {
       return beforeHook.call(_this, { source: source, args: args, context: context, info: info }, backend, function (err) {
         if (err) return reject(asError(err));
 
-        // handle temporal plugin
-        /*
-        if (isVersioned && !nested) {
-          if (temporalDef.subscribe === false) {
-            return reject(new Error('subscribe is not allowed on this temporal type'))
-          }
-          if (_.isFunction(temporalDef.subscribe)) {
-            return resolve(temporalDef.subscribe.call(this, source, args, context, info))
-          } else if (_.isString(temporalDef.subscribe)) {
-            let temporalSubscribe = _.get(definition, `functions["${temporalDef.subscribe}"]`)
-            if (!_.isFunction(temporalSubscribe)) {
-              return reject(new Error(`cannot find function "${temporalDef.subscribe}"`))
-            }
-            return resolve(temporalSubscribe.call(this, source, args, context, info))
-          } else {
-            let versionFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
-            if (!_.isFunction(versionFilter)) {
-              return reject(new Error(`could not find "temporalFilter" in globals`))
-            }
-            filter = versionFilter(type, args)
-            args = _.omit(args, ['version', 'recordId', 'date', 'id'])
-             if (!_.keys(args).length && readMostCurrent === true) {
-              filter = temporalMostCurrent(type)
-            } else {
-              let versionFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
-              if (!_.isFunction(versionFilter)) {
-                return reject(new Error(`could not find "temporalFilter" in globals`))
-              }
-              filter = versionFilter(type, args)
-              args = _.omit(args, ['version', 'recordId', 'date', 'id'])
-            }
-          }
-        }
-        */
-
         filter = getArgsFilter(backend, type, args, filter);
 
         // if not a many relation, return only a single result or null
         filter = many ? filter : filter.nth(0).default(null);
+
+        // finally pluck the desired fields
+        filter = _.isEmpty(requestFields) ? filter : filter.pluck(requestFields);
 
         try {
           var _ret = function () {
 
             // create the subscriptionId and the response payload
             var subscriptionId = subscriptionEvent('' + SUBSCRIBE + type, subscriptionArguments(backend.graphql, info.operation, 0).argument);
-            var payload = { subscription: subscriptionId, subscriber: subscriber };
 
-            // check if the subscript is already active
-            // if it is, add a subscriber to the count
-            // potentially add a ping to the client to determine if they are still listening
-            if (_.has(subscriptions, subscriptionId)) {
-              subscriptions[subscriptionId].subscribers = _.union(subscriptions[subscriptionId].subscribers, [subscriber]);
-              console.log('found subscription, sending results');
-              var requestString = graphql.print({ kind: graphql.Kind.DOCUMENT, definitions: [info.operation] });
-
+            // if the request is a bypass, run the regular query
+            if (backend.subscriptionManager.isBypass(subscriptionId, subscriber)) {
               return {
-                v: graphql.graphql(info.schema, requestString, info.rootValue, context, info.variableValues).then(function (result) {
+                v: filter.run(connection).then(function (result) {
                   return resolve(result);
                 }).catch(function (error) {
                   return reject(asError(error));
@@ -2078,52 +2084,30 @@ function subscribe(backend, type) {
               };
             }
 
+            // run the query to ensure it is valid before setting up the subscription
             return {
-              v: filter.changes()('new_val').run(connection).then(function (cursor) {
-                // add the new subscription
-                subscriptions[subscriptionId] = {
-                  data: {},
-                  cursor: cursor,
-                  subscribers: [subscriber]
-                };
-
-                // add the event monitor
-                cursor.each(function (err, change) {
+              v: filter.run(connection).then(function (result) {
+                // since there a valid response, subscribe via the manager
+                return backend.subscriptionManager.subscribe(subscriptionId, subscriber, null, filter, {
+                  schema: info.schema,
+                  requestString: graphql.print({
+                    kind: graphql.Kind.DOCUMENT,
+                    definitions: [info.operation]
+                  }),
+                  rootValue: info.rootValue,
+                  context: context,
+                  variableValues: info.variableValues
+                }, function (err) {
                   if (err) {
-                    console.log('err', err);
-                    return backend.emit(subscriptionId, {
-                      errors: _.isArray(err) ? err : [err]
+                    // on error, attempt to unsubscribe. it doesnt matter if it fails, reject the promise
+                    return backend.subscriptionManager.unsubscribe(subscriptionId, subscriber, function () {
+                      return reject(err);
                     });
                   }
-
-                  console.log('changes', change);
-
-                  // run the after hook on each change
-                  return filter.run(connection).then(function (result) {
-                    return afterHook.call(_this, change, args, backend, function (err, data) {
-                      if (err) {
-                        return backend.emit(subscriptionId, {
-                          data: data,
-                          errors: _.isArray(err) ? err : [err]
-                        });
-                      }
-                      backend.emit(subscriptionId, result);
-                    });
-                  }).catch(function (error) {
-                    backend.emit(subscriptionId, {
-                      errors: _.isArray(error) ? error : [error]
-                    });
-                  });
-                });
-
-                // send initial query
-                return filter.run(connection).then(function (result) {
                   return resolve(result);
-                }).catch(function (error) {
-                  return reject(asError(error));
                 });
-              }).catch(function (err) {
-                reject(asError(err));
+              }).catch(function (error) {
+                return reject(asError(error));
               })
             };
           }();
@@ -2137,37 +2121,24 @@ function subscribe(backend, type) {
   };
 }
 
-function unsubscribe(backend) {
+function unsubscribe$1(backend) {
   return function (source, args) {
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
     var subscription = args.subscription,
         subscriber = args.subscriber;
-    var subscriptions = backend.subscriptions,
-        GraphQLError = backend.GraphQLError;
 
-    // check for subscription id
 
-    if (!_.has(subscriptions, subscription)) throw new GraphQLError('invalid subscription id');
-
-    // check that user is actually subscribed
-    if (!_.includes(_.get(subscriptions, subscription), subscriber)) {
-      throw new GraphQLError('subscriber ' + subscriber + ' not found on subscription ' + subscription);
-    }
-
-    // remove the user from the subscribers list
-    subscriptions[subscription].subscribers = _.without(subscriptions[subscription].subscribers, subscriber);
-
-    // if there are no more subscribers, close the cursor and remove the subscription
-    if (!subscriptions[subscription].subscribers.length) {
-      subscriptions[subscription].cursor.close();
-      delete subscriptions[subscription];
-    }
-
-    // tell the user they are unsubscribed
-    return {
-      unsubscribed: true
-    };
+    return new Promise(function (resolve, reject) {
+      try {
+        return backend.subscriptionManager.unsubscribe(subscription, subscriber, function (err) {
+          if (err) return reject(err);
+          return resolve({ unsubscribed: true });
+        });
+      } catch (err) {
+        return reject(err);
+      }
+    });
   };
 }
 
@@ -2214,6 +2185,154 @@ function initStore$1(type, rebuild, seedData) {
   });
 }
 
+var SubscriptionManager = function (_Events) {
+  inherits(SubscriptionManager, _Events);
+
+  function SubscriptionManager(backend) {
+    classCallCheck(this, SubscriptionManager);
+
+    var _this = possibleConstructorReturn(this, (SubscriptionManager.__proto__ || Object.getPrototypeOf(SubscriptionManager)).call(this));
+
+    _this.backend = backend;
+    _this.subscriptions = {};
+    return _this;
+  }
+
+  createClass(SubscriptionManager, [{
+    key: 'subscribe',
+    value: function subscribe(subscription, subscriber, parent, filter, query, callback) {
+      var _this2 = this;
+
+      var graphql$$1 = this.backend.graphql;
+
+      // if the subscription is already running, add the subscriber and return
+      if (_.has(this.subscriptions, subscription)) {
+        var sub = this.subscriptions[subscription];
+        sub.subscribers = _.union(sub.subscribers, [subscriber]);
+        return callback();
+      }
+
+      // if the subscription is new, create a change feed and register the subscription
+      return filter.changes().run(this.backend._connection).then(function (cursor) {
+        var schema = query.schema,
+            requestString = query.requestString,
+            rootValue = query.rootValue,
+            context = query.context,
+            variableValues = query.variableValues;
+
+        // create a bypass subscriber, this will be used to make the request without
+        // creating a new subscription
+
+        var bypass = md5(subscription + ':' + Date.now() + ':' + Math.random());
+        var bypassedRequest = _this2.setBypassSubscriber(requestString, bypass);
+
+        // add the new subscription
+        _this2.subscriptions[subscription] = {
+          bypass: bypass,
+          cursor: cursor,
+          debounce: null,
+          subscribers: [subscriber],
+          parents: parent ? [parent] : []
+        };
+
+        // execute the code
+        var execute = function execute() {
+          // clear the debounce
+          _.set(_this2.subscriptions, '["' + subscription + '"].debounce', null);
+
+          // do graphql query and emit to backend
+          return graphql$$1.graphql(schema, bypassedRequest, _.cloneDeep(rootValue), _.cloneDeep(context), _.cloneDeep(variableValues)).then(function (result) {
+            return _this2.backend.emit(subscription, result);
+          }).catch(function (error) {
+            return _this2.backend.emit(subscription, {
+              errors: _.isArray(error) ? error : [error]
+            });
+          });
+        };
+
+        // listen for local events
+        _this2.on(subscription, function () {
+          var debounce = _.get(_this2.subscriptions, '["' + subscription + '"].debounce');
+          if (debounce) clearTimeout(debounce);
+          _.set(_this2.subscriptions, '["' + subscription + '"].debounce', setTimeout(execute, 500));
+        });
+
+        // call the callback
+        callback();
+
+        // add the event monitor
+        return cursor.each(function (err, change) {
+          if (err) {
+            return _this2.backend.emit(subscription, {
+              errors: _.isArray(err) ? err : [err]
+            });
+          }
+
+          // emit to all of the parent subscription events
+          _.forEach(_this2.subscriptions[subscription].parents, function (parentSubscription) {
+            _this2.emit(parentSubscription);
+          });
+
+          // emit this event
+          return _this2.emit(subscription);
+        });
+      }).catch(function (error) {
+        return callback(error);
+      });
+    }
+  }, {
+    key: 'isBypass',
+    value: function isBypass(subscription, subscriber) {
+      return _.get(this.subscriptions, '["' + subscription + '"].bypass') === subscriber;
+    }
+  }, {
+    key: 'unsubscribe',
+    value: function unsubscribe(subscription, subscriber, callback) {
+      var GraphQLError = this.backend.graphql.GraphQLError;
+      var sub = _.get(this.subscriptions, '["' + subscription + '"]');
+      if (!sub) {
+        return callback(new GraphQLError('subscription ' + subscription + ' was not found'));
+      }
+      if (!_.includes(sub.subscribers, subscriber)) {
+        return callback(new GraphQLError('subscriber ' + subscriber + ' is not subscribed to subscription ' + subscription));
+      }
+      sub.subscribers = _.without(sub.subscribers, subscriber);
+      if (!sub.subscribers.length) {
+        sub.cursor.close();
+        delete this.subscriptions[subscription];
+      }
+      return callback();
+    }
+  }, {
+    key: 'setBypassSubscriber',
+    value: function setBypassSubscriber(requestString, bypass) {
+      var graphql$$1 = this.backend.graphql;
+      var Kind$$1 = graphql$$1.Kind;
+      var request = graphql$$1.parse(requestString);
+
+      _.forEach(request.definitions, function (definition) {
+        var kind = definition.kind,
+            operation = definition.operation,
+            selectionSet = definition.selectionSet;
+
+        if (kind === Kind$$1.OPERATION_DEFINITION && operation === 'subscription' && selectionSet) {
+          _.forEach(selectionSet.selections, function (selection) {
+            _.forEach(selection.arguments, function (argument) {
+              if (_.get(argument, 'name.value') === 'subscriber') {
+                _.set(argument, 'value.value', bypass);
+              }
+            });
+          });
+        }
+      });
+
+      // return the recompiled request
+      return graphql$$1.print(request);
+    }
+  }]);
+  return SubscriptionManager;
+}(Events);
+
 // extended backend class for RethinkDB
 
 var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
@@ -2237,6 +2356,9 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
     // utils
     _this.filter = filter$1;
     _this.q = Q(_this);
+
+    // subscription manager
+    _this.subscriptionManager = new SubscriptionManager(_this);
 
     // add values to the globals namespace
     _.merge(_this.definition.globals, defineProperty({}, namespace, { r: r, connection: connection }));
@@ -2291,12 +2413,12 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
   }, {
     key: 'subscribeResolver',
     value: function subscribeResolver(type) {
-      return subscribe(this, type);
+      return subscribe$1(this, type);
     }
   }, {
     key: 'unsubscribeResolver',
     value: function unsubscribeResolver() {
-      return unsubscribe(this);
+      return unsubscribe$1(this);
     }
   }, {
     key: 'getStore',

@@ -160,8 +160,9 @@ export default class GraphQLFactoryBaseBackend extends Events {
   }
 
   getPrimaryFromArgs (type, args) {
-    let { primary } = this.getTypeComputed(type)
-    if (!primary) throw 'Unable to obtain primary'
+    let { primary, primaryKey } = this.getTypeComputed(type)
+    if (!primary || !primaryKey) throw 'Unable to obtain primary'
+    if (_.has(args, `[${primaryKey}"]`)) return args[primaryKey]
     let pk = _.map(_.isArray(primary) ? primary : [primary], (k) => _.get(args, k))
     return pk.length === 1 ? pk[0] : pk
   }
@@ -212,6 +213,45 @@ export default class GraphQLFactoryBaseBackend extends Events {
       belongsTo,
       has
     }
+  }
+
+  getRequestFields (type, info, options = {}) {
+    let { maxDepth, includeRelated } = options
+    let { fields } = this.getTypeDefinition(type)
+    let fieldNode = _.first(_.filter(info.fieldNodes || info.fieldASTs, (node) => {
+      return _.get(node, 'name.value') === info.fieldName
+    }))
+    includeRelated = _.isBoolean(includeRelated) ? includeRelated : true
+
+    // parses the selection set recursively building a REQL style pluck filter
+    let parseSelection = (selectionSet, level) => {
+      let obj = {}
+      level += 1
+
+      _.forEach(selectionSet.selections, (selection) => {
+        let name = _.get(selection, 'name.value')
+        let fieldType = _.get(fields, `["${name}"].type`)
+        let fieldTypeName = _.isArray(fieldType) ? _.first(fieldType) : fieldType
+        let isRelation = _.has(this.definition.getType(fieldTypeName), `["${this._extension}"].computed.collection`)
+
+        // check relation
+        if (!isRelation || (isRelation && includeRelated)) {
+          if (!selection.selectionSet) {
+            obj[name] = true
+          } else {
+            obj[name] = (_.isNumber(maxDepth) && level >= maxDepth)
+              ? true
+              : parseSelection(selection.selectionSet, level)
+          }
+        }
+      })
+      return obj
+    }
+
+    // call parse on main field node selection set with an inital level of 0
+    return (fieldNode.selectionSet)
+      ? parseSelection(fieldNode.selectionSet, 0)
+      : {}
   }
 
   getRelatedValues (type, args) {

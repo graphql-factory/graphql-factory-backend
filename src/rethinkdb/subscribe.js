@@ -7,9 +7,10 @@ import { getRelationFilter, getArgsFilter } from './filter'
 
 export default function subscribe (backend, type) {
   return function (source, args, context = {}, info) {
-    let { r, connection, definition, asError, _temporalExtension, subscriptions } = backend
+    let { r, connection, definition, asError, _temporalExtension } = backend
     let { subscriber } = args
     delete args.subscriber
+    let requestFields = backend.getRequestFields(type, info, { maxDepth: 1, includeRelated: false })
 
     // temporal plugin details
     let temporalDef = _.get(definition, `types["${type}"]["${_temporalExtension}"]`, {})
@@ -38,46 +39,15 @@ export default function subscribe (backend, type) {
       return beforeHook.call(this, { source, args, context, info }, backend, (err) => {
         if (err) return reject(asError(err))
 
-        // handle temporal plugin
-        /*
-        if (isVersioned && !nested) {
-          if (temporalDef.subscribe === false) {
-            return reject(new Error('subscribe is not allowed on this temporal type'))
-          }
-          if (_.isFunction(temporalDef.subscribe)) {
-            return resolve(temporalDef.subscribe.call(this, source, args, context, info))
-          } else if (_.isString(temporalDef.subscribe)) {
-            let temporalSubscribe = _.get(definition, `functions["${temporalDef.subscribe}"]`)
-            if (!_.isFunction(temporalSubscribe)) {
-              return reject(new Error(`cannot find function "${temporalDef.subscribe}"`))
-            }
-            return resolve(temporalSubscribe.call(this, source, args, context, info))
-          } else {
-            let versionFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
-            if (!_.isFunction(versionFilter)) {
-              return reject(new Error(`could not find "temporalFilter" in globals`))
-            }
-            filter = versionFilter(type, args)
-            args = _.omit(args, ['version', 'recordId', 'date', 'id'])
-
-            if (!_.keys(args).length && readMostCurrent === true) {
-              filter = temporalMostCurrent(type)
-            } else {
-              let versionFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
-              if (!_.isFunction(versionFilter)) {
-                return reject(new Error(`could not find "temporalFilter" in globals`))
-              }
-              filter = versionFilter(type, args)
-              args = _.omit(args, ['version', 'recordId', 'date', 'id'])
-            }
-          }
-        }
-        */
-
         filter = getArgsFilter(backend, type, args, filter)
 
         // if not a many relation, return only a single result or null
         filter = many ? filter : filter.nth(0).default(null)
+
+        // finally pluck the desired fields
+        filter = _.isEmpty(requestFields)
+          ? filter
+          : filter.pluck(requestFields)
 
         try {
 
@@ -86,20 +56,10 @@ export default function subscribe (backend, type) {
             `${SUBSCRIBE}${type}`,
             subscriptionArguments(backend.graphql, info.operation, 0).argument
           )
-          let payload = { subscription: subscriptionId, subscriber }
 
-          // check if the subscript is already active
-          // if it is, add a subscriber to the count
-          // potentially add a ping to the client to determine if they are still listening
-          if (_.has(subscriptions, subscriptionId)) {
-            subscriptions[subscriptionId].subscribers = _.union(
-              subscriptions[subscriptionId].subscribers,
-              [subscriber]
-            )
-            console.log('found subscription, sending results')
-            let requestString = graphql.print({ kind: graphql.Kind.DOCUMENT, definitions: [info.operation] })
-
-            return graphql.graphql(info.schema, requestString, info.rootValue, context, info.variableValues)
+          // if the request is a bypass, run the regular query
+          if (backend.subscriptionManager.isBypass(subscriptionId, subscriber)) {
+            return filter.run(connection)
               .then((result) => {
                 return resolve(result)
               })
@@ -108,57 +68,37 @@ export default function subscribe (backend, type) {
               })
           }
 
-          return filter.changes()('new_val').run(connection)
-            .then((cursor) => {
-              // add the new subscription
-              subscriptions[subscriptionId] = {
-                data: {},
-                cursor,
-                subscribers: [subscriber]
-              }
-
-              // add the event monitor
-              cursor.each((err, change) => {
-                if (err) {
-                  console.log('err', err)
-                  return backend.emit(subscriptionId, {
-                    errors: _.isArray(err) ? err : [err]
-                  })
-                }
-
-                console.log('changes', change)
-
-                // run the after hook on each change
-                return filter.run(connection)
-                  .then((result) => {
-                    return afterHook.call(this, change, args, backend, (err, data) => {
-                      if (err) {
-                        return backend.emit(subscriptionId, {
-                          data,
-                          errors: _.isArray(err) ? err : [err]
-                        })
-                      }
-                      backend.emit(subscriptionId, result)
+          // run the query to ensure it is valid before setting up the subscription
+          return filter.run(connection)
+            .then((result) => {
+              // since there a valid response, subscribe via the manager
+              return backend.subscriptionManager.subscribe(
+                subscriptionId,
+                subscriber,
+                null,
+                filter,
+                {
+                  schema: info.schema,
+                  requestString: graphql.print({
+                    kind: graphql.Kind.DOCUMENT,
+                    definitions: [info.operation]
+                  }),
+                  rootValue: info.rootValue,
+                  context,
+                  variableValues: info.variableValues
+                },
+                (err) => {
+                  if (err) {
+                    // on error, attempt to unsubscribe. it doesnt matter if it fails, reject the promise
+                    return backend.subscriptionManager.unsubscribe(subscriptionId, subscriber, () => {
+                      return reject(err)
                     })
-                  })
-                  .catch((error) => {
-                    backend.emit(subscriptionId, {
-                      errors: _.isArray(error) ? error : [error]
-                    })
-                  })
-              })
-
-              // send initial query
-              return filter.run(connection)
-                .then((result) => {
+                  }
                   return resolve(result)
                 })
-                .catch((error) => {
-                  return reject(asError(error))
-                })
             })
-            .catch((err) => {
-              reject(asError(err))
+            .catch((error) => {
+              return reject(asError(error))
             })
         } catch (err) {
           return reject(asError(err))
