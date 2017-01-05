@@ -25,7 +25,7 @@ function selectionArguments(selections) {
   return args;
 }
 
-function subscriptionArguments(graphql, requestString) {
+function subscriptionArguments(graphql, requestString, idx) {
   var args = [];
   var Kind = graphql.Kind;
   var request = _.isObject(requestString) ? { definitions: [requestString] } : graphql.parse(requestString);
@@ -45,7 +45,7 @@ function subscriptionArguments(graphql, requestString) {
     }
   });
 
-  return args;
+  return _.isNumber(idx) ? _.get(args, '["' + idx + '"]') : args;
 }
 
 function subscriptionEvent(name) {
@@ -76,6 +76,7 @@ function subscriptionDetails(graphql, requestString) {
     var name = arg.name,
         argument = arg.argument;
 
+    console.log(JSON.stringify(argument, null, '  '));
     var subscription = subscriptionEvent(name, argument);
 
     if (name.match(/^unsubscribe.*/)) {

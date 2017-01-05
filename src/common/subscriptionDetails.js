@@ -10,6 +10,7 @@ export default function subscriptionDetails (graphql, requestString) {
 
   _.forEach(subscriptionArguments(graphql, requestString), (arg) => {
     let { name, argument } = arg
+    console.log(JSON.stringify(argument, null, '  '))
     let subscription = subscriptionEvent(name, argument)
 
     if (name.match(/^unsubscribe.*/)) {

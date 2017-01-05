@@ -358,8 +358,8 @@ export default class GraphQLFactoryBackendCompiler {
           let returnType = name === UNSUBSCRIBE
             ? 'GraphQLFactoryUnsubscribeResponse'
             : type
-              ? _.isArray(type) ? _.first(type) : type
-              : typeName
+              ? type
+              : [typeName]
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
             type: returnType,

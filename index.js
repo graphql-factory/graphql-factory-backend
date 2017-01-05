@@ -7,6 +7,7 @@ function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'defau
 var _ = _interopDefault(require('lodash'));
 var Promise$1 = _interopDefault(require('bluebird'));
 var Events = _interopDefault(require('events'));
+var graphql = require('graphql');
 var md5 = _interopDefault(require('md5'));
 
 var GraphQLFactoryUnsubscribeResponse = {
@@ -518,7 +519,7 @@ var GraphQLFactoryBackendCompiler = function () {
             var ops = [SUBSCRIBE, UNSUBSCRIBE];
             var fieldName = _.includes(ops, name) ? '' + name + typeName : name;
             var resolveName = _.isString(resolve) ? resolve : 'backend_' + fieldName;
-            var returnType = name === UNSUBSCRIBE ? 'GraphQLFactoryUnsubscribeResponse' : type ? _.isArray(type) ? _.first(type) : type : typeName;
+            var returnType = name === UNSUBSCRIBE ? 'GraphQLFactoryUnsubscribeResponse' : type ? type : [typeName];
 
             _.set(_this5.definition.types, '["' + objName + '"].fields["' + fieldName + '"]', {
               type: returnType,
@@ -723,7 +724,7 @@ var GraphQLFactoryBackendCompiler = function () {
 var GraphQLFactoryBaseBackend = function (_Events) {
   inherits(GraphQLFactoryBaseBackend, _Events);
 
-  function GraphQLFactoryBaseBackend(namespace, graphql, factory) {
+  function GraphQLFactoryBaseBackend(namespace, graphql$$1, factory) {
     var config = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
     classCallCheck(this, GraphQLFactoryBaseBackend);
 
@@ -748,15 +749,15 @@ var GraphQLFactoryBaseBackend = function (_Events) {
 
 
     if (!_.isString(namespace)) throw new Error('a namespace is required');
-    if (!graphql) throw new Error('an instance of graphql is required');
+    if (!graphql$$1) throw new Error('an instance of graphql is required');
     if (!factory) throw new Error('an instance of graphql-factory is required');
     if (!_.isObject(types)) throw new Error('no types were found in the configuration');
 
     // set props
     _this.type = 'GraphQLFactoryBaseBackend';
-    _this.graphql = graphql;
-    _this.GraphQLError = graphql.GraphQLError;
-    _this.factory = factory(graphql);
+    _this.graphql = graphql$$1;
+    _this.GraphQLError = graphql$$1.GraphQLError;
+    _this.factory = factory(graphql$$1);
     _this.name = name || 'GraphQLFactoryBackend';
     _this.options = options || {};
     _this.queries = {};
@@ -1917,10 +1918,10 @@ function selectionArguments(selections) {
   return args;
 }
 
-function subscriptionArguments(graphql, requestString) {
+function subscriptionArguments(graphql$$1, requestString, idx) {
   var args = [];
-  var Kind = graphql.Kind;
-  var request = _.isObject(requestString) ? { definitions: [requestString] } : graphql.parse(requestString);
+  var Kind$$1 = graphql$$1.Kind;
+  var request = _.isObject(requestString) ? { definitions: [requestString] } : graphql$$1.parse(requestString);
 
   _.forEach(request.definitions, function (definition, idx) {
     var kind = definition.kind,
@@ -1929,7 +1930,7 @@ function subscriptionArguments(graphql, requestString) {
         selectionSet = definition.selectionSet;
 
 
-    if (kind === Kind.OPERATION_DEFINITION && operation === 'subscription') {
+    if (kind === Kind$$1.OPERATION_DEFINITION && operation === 'subscription') {
       args.push({
         name: _.get(name, 'value', '' + idx),
         argument: selectionArguments(selectionSet.selections)
@@ -1937,7 +1938,7 @@ function subscriptionArguments(graphql, requestString) {
     }
   });
 
-  return args;
+  return _.isNumber(idx) ? _.get(args, '["' + idx + '"]') : args;
 }
 
 function subscriptionEvent(name) {
@@ -1964,9 +1965,6 @@ function subscribe(backend, type) {
 
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
-
-    console.log(JSON.stringify(subscriptionArguments(backend.graphql, info.operation), null, '  '));
-
     var r = backend.r,
         connection = backend.connection,
         definition = backend.definition,
@@ -1976,9 +1974,6 @@ function subscribe(backend, type) {
     var subscriber = args.subscriber;
 
     delete args.subscriber;
-
-    // use the un-modified args for creating a subscription id
-    var subArgs = _.cloneDeep(args);
 
     // temporal plugin details
     var temporalDef = _.get(definition, 'types["' + type + '"]["' + _temporalExtension + '"]', {});
@@ -2061,22 +2056,27 @@ function subscribe(backend, type) {
 
         try {
           var _ret = function () {
+
             // create the subscriptionId and the response payload
-            var subscriptionId = subscriptionEvent('' + SUBSCRIBE + type, subArgs);
+            var subscriptionId = subscriptionEvent('' + SUBSCRIBE + type, subscriptionArguments(backend.graphql, info.operation, 0).argument);
             var payload = { subscription: subscriptionId, subscriber: subscriber };
 
             // check if the subscript is already active
             // if it is, add a subscriber to the count
             // potentially add a ping to the client to determine if they are still listening
             if (_.has(subscriptions, subscriptionId)) {
-              console.log('found subscription id', subscriptionId);
               subscriptions[subscriptionId].subscribers = _.union(subscriptions[subscriptionId].subscribers, [subscriber]);
+              console.log('found subscription, sending results');
+              var requestString = graphql.print({ kind: graphql.Kind.DOCUMENT, definitions: [info.operation] });
+
               return {
-                v: resolve(payload)
+                v: graphql.graphql(info.schema, requestString, info.rootValue, context, info.variableValues).then(function (result) {
+                  return resolve(result);
+                }).catch(function (error) {
+                  return reject(asError(error));
+                })
               };
             }
-
-            console.log('ADDING NEW SUBSCRIPTION', subscriptionId);
 
             return {
               v: filter.changes()('new_val').run(connection).then(function (cursor) {
@@ -2087,11 +2087,8 @@ function subscribe(backend, type) {
                   subscribers: [subscriber]
                 };
 
-                // send the payload before starting the cursor read
-                resolve(payload);
-
                 // add the event monitor
-                return cursor.each(function (err, change) {
+                cursor.each(function (err, change) {
                   if (err) {
                     console.log('err', err);
                     return backend.emit(subscriptionId, {
@@ -2102,15 +2099,28 @@ function subscribe(backend, type) {
                   console.log('changes', change);
 
                   // run the after hook on each change
-                  return afterHook.call(_this, change, args, backend, function (err, data) {
-                    if (err) {
-                      return backend.emit(subscriptionId, {
-                        data: data,
-                        errors: _.isArray(err) ? err : [err]
-                      });
-                    }
-                    backend.emit(subscriptionId, { data: data });
+                  return filter.run(connection).then(function (result) {
+                    return afterHook.call(_this, change, args, backend, function (err, data) {
+                      if (err) {
+                        return backend.emit(subscriptionId, {
+                          data: data,
+                          errors: _.isArray(err) ? err : [err]
+                        });
+                      }
+                      backend.emit(subscriptionId, result);
+                    });
+                  }).catch(function (error) {
+                    backend.emit(subscriptionId, {
+                      errors: _.isArray(error) ? error : [error]
+                    });
                   });
+                });
+
+                // send initial query
+                return filter.run(connection).then(function (result) {
+                  return resolve(result);
+                }).catch(function (error) {
+                  return reject(asError(error));
                 });
               }).catch(function (err) {
                 reject(asError(err));
@@ -2209,10 +2219,10 @@ function initStore$1(type, rebuild, seedData) {
 var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
   inherits(GraphQLFactoryRethinkDBBackend, _GraphQLFactoryBaseBa);
 
-  function GraphQLFactoryRethinkDBBackend(namespace, graphql, factory, r, config, connection) {
+  function GraphQLFactoryRethinkDBBackend(namespace, graphql$$1, factory, r, config, connection) {
     classCallCheck(this, GraphQLFactoryRethinkDBBackend);
 
-    var _this = possibleConstructorReturn(this, (GraphQLFactoryRethinkDBBackend.__proto__ || Object.getPrototypeOf(GraphQLFactoryRethinkDBBackend)).call(this, namespace, graphql, factory, config));
+    var _this = possibleConstructorReturn(this, (GraphQLFactoryRethinkDBBackend.__proto__ || Object.getPrototypeOf(GraphQLFactoryRethinkDBBackend)).call(this, namespace, graphql$$1, factory, config));
 
     _this.type = 'GraphQLFactoryRethinkDBBackend';
 

@@ -18,7 +18,7 @@ function selectionArguments (selections) {
   return args
 }
 
-export default function subscriptionArguments (graphql, requestString) {
+export default function subscriptionArguments (graphql, requestString, idx) {
   let args = []
   let Kind = graphql.Kind
   let request = _.isObject(requestString)
@@ -36,5 +36,5 @@ export default function subscriptionArguments (graphql, requestString) {
     }
   })
 
-  return args
+  return _.isNumber(idx) ? _.get(args, `["${idx}"]`) : args
 }

@@ -1,21 +1,15 @@
 import _ from 'lodash'
 import Promise from 'bluebird'
+import * as graphql from 'graphql'
 import { SUBSCRIBE } from '../base/GraphQLFactoryBackendCompiler'
 import { subscriptionEvent, subscriptionArguments } from '../common/index'
 import { getRelationFilter, getArgsFilter } from './filter'
 
 export default function subscribe (backend, type) {
   return function (source, args, context = {}, info) {
-    console.log(
-      JSON.stringify(subscriptionArguments(backend.graphql, info.operation), null, '  ')
-    )
-
     let { r, connection, definition, asError, _temporalExtension, subscriptions } = backend
     let { subscriber } = args
     delete args.subscriber
-
-    // use the un-modified args for creating a subscription id
-    let subArgs = _.cloneDeep(args)
 
     // temporal plugin details
     let temporalDef = _.get(definition, `types["${type}"]["${_temporalExtension}"]`, {})
@@ -86,23 +80,33 @@ export default function subscribe (backend, type) {
         filter = many ? filter : filter.nth(0).default(null)
 
         try {
+
           // create the subscriptionId and the response payload
-          let subscriptionId = subscriptionEvent(`${SUBSCRIBE}${type}`, subArgs)
+          let subscriptionId = subscriptionEvent(
+            `${SUBSCRIBE}${type}`,
+            subscriptionArguments(backend.graphql, info.operation, 0).argument
+          )
           let payload = { subscription: subscriptionId, subscriber }
 
           // check if the subscript is already active
           // if it is, add a subscriber to the count
           // potentially add a ping to the client to determine if they are still listening
           if (_.has(subscriptions, subscriptionId)) {
-            console.log('found subscription id', subscriptionId)
             subscriptions[subscriptionId].subscribers = _.union(
               subscriptions[subscriptionId].subscribers,
               [subscriber]
             )
-            return resolve(payload)
-          }
+            console.log('found subscription, sending results')
+            let requestString = graphql.print({ kind: graphql.Kind.DOCUMENT, definitions: [info.operation] })
 
-          console.log('ADDING NEW SUBSCRIPTION', subscriptionId)
+            return graphql.graphql(info.schema, requestString, info.rootValue, context, info.variableValues)
+              .then((result) => {
+                return resolve(result)
+              })
+              .catch((error) => {
+                return reject(asError(error))
+              })
+          }
 
           return filter.changes()('new_val').run(connection)
             .then((cursor) => {
@@ -113,11 +117,8 @@ export default function subscribe (backend, type) {
                 subscribers: [subscriber]
               }
 
-              // send the payload before starting the cursor read
-              resolve(payload)
-
               // add the event monitor
-              return cursor.each((err, change) => {
+              cursor.each((err, change) => {
                 if (err) {
                   console.log('err', err)
                   return backend.emit(subscriptionId, {
@@ -128,16 +129,33 @@ export default function subscribe (backend, type) {
                 console.log('changes', change)
 
                 // run the after hook on each change
-                return afterHook.call(this, change, args, backend, (err, data) => {
-                  if (err) {
-                    return backend.emit(subscriptionId, {
-                      data,
-                      errors: _.isArray(err) ? err : [err]
+                return filter.run(connection)
+                  .then((result) => {
+                    return afterHook.call(this, change, args, backend, (err, data) => {
+                      if (err) {
+                        return backend.emit(subscriptionId, {
+                          data,
+                          errors: _.isArray(err) ? err : [err]
+                        })
+                      }
+                      backend.emit(subscriptionId, result)
                     })
-                  }
-                  backend.emit(subscriptionId, { data })
-                })
+                  })
+                  .catch((error) => {
+                    backend.emit(subscriptionId, {
+                      errors: _.isArray(error) ? error : [error]
+                    })
+                  })
               })
+
+              // send initial query
+              return filter.run(connection)
+                .then((result) => {
+                  return resolve(result)
+                })
+                .catch((error) => {
+                  return reject(asError(error))
+                })
             })
             .catch((err) => {
               reject(asError(err))
