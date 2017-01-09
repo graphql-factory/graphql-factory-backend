@@ -102,20 +102,33 @@ export function getArgsFilter (backend, type, args, filter) {
 export function violatesUnique (backend, type, args, filter) {
   filter = filter || backend.getCollection(type)
   let { r } = backend
-  let unique = backend.getUniqueArgs(type, args)
+  let unique = _.isArray(args)
+    ? _.map((arg) => backend.getUniqueArgs(type, args))
+    : [backend.getUniqueArgs(type, args)]
+
+  let uniqueViolation = _.reduce(unique, (result, value) => {
+    return result && _.filter(unique, value).length > 1
+  }, true)
+
+  if (uniqueViolation) return r.error('unique field violation')
 
   if (unique.length) {
     return filter.filter((obj) => {
       return r.expr(unique)
         .prepend(true)
-        .reduce((prevUniq, uniq) => {
-          return prevUniq.and(
-            uniq.prepend(true)
-              .reduce((prevField, field) => {
-                return prevField.and(field('type').eq('String').branch(
-                  obj(field('field')).match(r.add('(?i)^', field('value'), '$')),
-                  obj(field('field')).eq(field('value'))
-                ))
+        .reduce((prevArg, arg) => {
+          return prevArg.and(
+            arg.prepend(true)
+              .reduce((prevUniq, uniq) => {
+                return prevUniq.and(
+                  uniq.prepend(true)
+                    .reduce((prevField, field) => {
+                      return prevField.and(field('type').eq('String').branch(
+                        obj(field('field')).match(r.add('(?i)^', field('value'), '$')),
+                        obj(field('field')).eq(field('value'))
+                      ))
+                    })
+                )
               })
           )
         })

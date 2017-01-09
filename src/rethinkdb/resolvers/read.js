@@ -1,6 +1,6 @@
 import _ from 'lodash'
 import Promise from 'bluebird'
-import { getRelationFilter, getArgsFilter } from './filter'
+import { getRelationFilter, getArgsFilter } from '../common/filter'
 
 export default function read (backend, type) {
   return function (source, args, context = {}, info) {

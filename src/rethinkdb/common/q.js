@@ -128,20 +128,38 @@ export class GraphQLFactoryBackendQueryBuilder {
     let r = this._r
     let table = this._collection
     let throwErrors = options.throwErrors === false ? false : true
+    let isBatch = _.isArray(args)
+    args = isBatch
+      ? args
+      : args
+        ? [args]
+        : []
 
-    // map the types store and collection
-    let exists = _.isArray(options.exists) ?  options.exists : []
+    // reduce the exists selection to a flat list of unique values
+    let exists = _.reduce(_.flatten(_.isArray(options.exists) ?  options.exists : []), (result, value) => {
+      return _.find(result, value) ? result : _.union(result, [value])
+    }, [])
 
     this._value = r.expr(exists).prepend(true)
       .reduce((prev, cur) => prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null)))
       .not()
       .branch(
-        throwErrors ? r.error('One or more related records were not found') : null,
-        table.insert(this._b.updateArgsWithPrimary(this._type, args), { returnChanges: true })('changes')
+        throwErrors ? r.error('one or more related records were not found') : null,
+        table.insert(args, { returnChanges: true })
+          .pluck('errors', 'first_error', 'changes')
+          .do((summary) => {
+            return summary('errors').ne(0).branch(
+              r.error(summary('first_error')),
+              summary('changes')('new_val')
+            )
+          })
           .do((changes) => {
-            return changes.count().eq(0).branch(
-              throwErrors ? r.error('Failed to insert') : null,
-              changes.nth(0)('new_val')
+            return r.branch(
+              changes.count().ne(args.length),
+              r.error(`only created ${changes.count()} of ${args.length} requested records`),
+              r.expr(isBatch),
+              changes,
+              changes.nth(0)
             )
           })
       )
@@ -152,47 +170,80 @@ export class GraphQLFactoryBackendQueryBuilder {
     let r = this._r
     let table = this._collection
     let throwErrors = options.throwErrors === false ? false : true
-    let id = this._b.getPrimaryFromArgs(this._type, args)
+    let isBatch = _.isArray(args)
+    let { primaryKey } = this._b.getTypeComputed(this._type)
+    args = isBatch
+      ? args
+      : args
+        ? [args]
+        : []
 
-    // map the types store and collection
-    let exists = _.isArray(options.exists) ?  options.exists : []
+    let id = isBatch
+      ? _.map((arg) => this._b.getPrimaryFromArgs(this._type, arg))
+      : [this._b.getPrimaryFromArgs(this._type, args)]
 
-    let filter = id ? table.get(id) : this._value
-    let not = id ? filter.eq(null) : r.expr(false)
+    // reduce the exists selection to a flat list of unique values
+    let exists = _.reduce(_.flatten(_.isArray(options.exists) ?  options.exists : []), (result, value) => {
+      return _.find(result, value) ? result : _.union(result, [value])
+    }, [])
 
-    this._value = not.branch(
-      throwErrors ? r.error('The record was not found') : null,
-      r.expr(exists).prepend(true)
-        .reduce((prev, cur) => prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null)))
-        .not()
-        .branch(
-          throwErrors ? r.error('One or more related records were not found') : null,
-          filter.update(args)
-        )
-    )
+    this._value = r.expr(exists).prepend(true)
+      .reduce((prev, cur) => prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null)))
+      .not()
+      .branch(
+        throwErrors ? r.error('one or more related records were not found') : null,
+        r.expr(args).forEach((arg) => {
+          return table.get(arg(primaryKey)).eq(null).branch(
+            r.error(`${this._type} with id ${arg(primaryKey)} was not found, and could not be updated`),
+            table.get(arg(primaryKey)).update(arg, { returnChanges: true })
+          )
+        })
+          .pluck('errors', 'first_error')
+          .do((summary) => {
+            return summary('errors').ne(0).branch(
+              r.error(summary('first_error')),
+              r.filter((f) => r.expr(id).contains(f(primaryKey)))
+                .coerceTo('ARRAY')
+                .do((results) => {
+                  return r.expr(isBatch).branch(
+                    results,
+                    results.nth(0)
+                  )
+                })
+            )
+          })
+      )
     return this
   }
 
-  delete (id, options = {}) {
-    id = _.isObject(id) && !_.isArray(id) ? this._b.getPrimaryFromArgs(this._type, id) : id
+  delete (args, options = {}) {
     let r = this._r
     let table = this._collection
     let throwErrors = options.throwErrors === false ? false : true
+    let isBatch = _.isArray(args)
+    args = isBatch
+      ? args
+      : args
+        ? [args]
+        : []
 
-    if (!id) {
-      this._value = this._value.delete()
-      return this
-    }
+    let ids = isBatch
+      ? _.map((arg) => this._b.getPrimaryFromArgs(this._type, arg))
+      : [this._b.getPrimaryFromArgs(this._type, args)]
 
-    this._value = table.get(id).eq(null).branch(
-      throwErrors ? r.error('unable to delete, record not found') : false,
-      table.get(id).delete()('deleted')
-        .eq(0)
-        .branch(
-          throwErrors ? r.error('failed to delete record') : false,
+    this._value = r.expr(ids).forEach((id) => {
+      return table.get(id).eq(null).branch(
+        r.error(`${this._type} with id ${id} was not found and cannot be deleted`),
+        table.get(id).delete({ returnChanges: true })
+      )
+    })
+      .pluck('errors', 'first_error')
+      .do((summary) => {
+        return summary('errors').ne(0).branch(
+          r.error(summary('first_error')),
           true
         )
-    )
+      })
     return this
   }
 

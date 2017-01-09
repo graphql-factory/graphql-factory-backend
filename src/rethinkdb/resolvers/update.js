@@ -1,9 +1,9 @@
 import _ from 'lodash'
 import Promise from 'bluebird'
-import Q from './q'
-import { notThisRecord, violatesUnique } from './filter'
+import Q from '../common/q'
+import { notThisRecord, violatesUnique } from '../common/filter'
 
-export default function update (backend, type) {
+export default function update (backend, type, batchMode = false) {
   // temporal plugin details
   let hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal')
   let temporalExt = backend._temporalExtension
@@ -13,13 +13,17 @@ export default function update (backend, type) {
 
   return function (source, args, context = {}, info) {
     let { r, connection, definition } = backend
-    let { before, after, timeout } = backend.getTypeInfo(type, info)
+    let { before, after, timeout, primaryKey } = backend.getTypeInfo(type, info)
     let q = Q(backend)
     let collection = backend.getCollection(type)
-    let id = backend.getPrimaryFromArgs(type, args)
-    let fnPath = `backend_update${type}`
+    let fnPath = `backend_${batchMode ? 'batchU' : 'u'}pdate${type}`
     let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
     let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
+    args = batchMode ? args.batch : args
+    let argArr = _.isArray(args) ? args : [args]
+
+    let ids = _.map(_.filter(argArr, primaryKey), primaryKey)
+    if (ids.length !== argArr.length) return r.error('missing primary key on one or more inputs')
 
     return new Promise((resolve, reject) => {
       return beforeHook.call(this, { source, args, context, info }, backend, (err) => {
@@ -42,16 +46,22 @@ export default function update (backend, type) {
             if (!_.isFunction(versionUpdate)) {
               return reject(new Error(`could not find "temporalUpdate" in globals`))
             }
-            update = versionUpdate(type, args)
+            update = batchMode
+              ? versionUpdate(type, args).coerceTo('ARRAY')
+              : versionUpdate(type, args).coerceTo('ARRAY').nth(0)
           }
         } else {
-          let notThis = notThisRecord(backend, type, args, collection)
+          let notThis = collection.filter((f) => r.expr(ids).contains(f(primaryKey)).not())
+
           update = violatesUnique(backend, type, args, notThis)
             .branch(
               r.error('unique field violation'),
               q.type(type)
-                .update(args, { exists: backend.getRelatedValues(type, args) })
-                .do(() => q.type(type).get(id).value())
+                .update(args, {
+                  exists: _.isArray(args)
+                    ? _.map((args) => backend.getRelatedValues(type, arg))
+                    : [backend.getRelatedValues(type, args)]
+                })
                 .value()
             )
         }

@@ -1,14 +1,14 @@
 import _ from 'lodash'
-import q from './q'
-import filter from './filter'
-import createResolver from './create'
-import readResolver from './read'
-import updateResolver from './update'
-import deleteResolver from './delete'
-import subscribeResolver from './subscribe'
-import unsubscribeResolver from './unsubscribe'
-import initStore from './initStore'
-import SubscriptionManager from './SubscriptionManager'
+import q from './common/q'
+import filter from './common/filter'
+import createResolver from './resolvers/create'
+import readResolver from './resolvers/read'
+import updateResolver from './resolvers/update'
+import deleteResolver from './resolvers/delete'
+import subscribeResolver from './resolvers/subscribe'
+import unsubscribeResolver from './resolvers/unsubscribe'
+import initStore from './install/initStore'
+import SubscriptionManager from './subscription/SubscriptionManager'
 
 import GraphQLFactoryBaseBackend from '../base/GraphQLFactroyBaseBackend'
 
@@ -75,6 +75,18 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
 
   deleteResolver (type) {
     return deleteResolver(this, type)
+  }
+
+  batchCreateResolver (type) {
+    return createResolver(this, type, true)
+  }
+
+  batchUpdateResolver (type) {
+    return updateResolver(this, type, true)
+  }
+
+  batchDeleteResolver (type) {
+    return deleteResolver(this, type, true)
   }
 
   subscribeResolver (type) {

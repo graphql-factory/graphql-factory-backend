@@ -1,8 +1,8 @@
 import _ from 'lodash'
 import Promise from 'bluebird'
-import Q from './q'
+import Q from '../common/q'
 
-export default function del (backend, type) {
+export default function del (backend, type, batchMode = false) {
   // temporal plugin details
   let hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal')
   let temporalExt = backend._temporalExtension
@@ -14,9 +14,10 @@ export default function del (backend, type) {
     let { connection, definition } = backend
     let { before, after, timeout } = backend.getTypeInfo(type, info)
     let q = Q(backend)
-    let fnPath = `backend_delete${type}`
+    let fnPath = `backend_${batchMode ? 'batchD' : 'd'}elete${type}`
     let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
     let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
+    args = batchMode ? args.batch : args
 
     return new Promise((resolve, reject) => {
       return beforeHook.call(this, { source, args, context, info }, backend, (err) => {

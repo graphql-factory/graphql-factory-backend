@@ -1,15 +1,47 @@
+// core modules
+import Events from 'events'
+
+// npm modules
 import _ from 'lodash'
 import Promise from 'bluebird'
-import Events from 'events'
+
+// local modules
 import FactoryBackendDefinition from '../graphql/index'
 import GraphQLFactoryBackendCompiler from './GraphQLFactoryBackendCompiler'
 
+/**
+ * Base GraphQL Factory Backend
+ * @extends Events
+ */
 export default class GraphQLFactoryBaseBackend extends Events {
-  constructor (namespace, graphql, factory, config = {}) {
+
+  /**
+   *
+   * @param {String} namespace - namespace to using in globals
+   * @param {Object} graphql - instance of graphql
+   * @param {Object} factory - instance of graphql-factory
+   * @param {Object} config - configuration object
+   * @param {String} [config.name="GraphQLFactoryBackend"] - plugin name
+   * @param {String} [config.extension="_backend"] - plugin extension
+   * @param {Object} [config.options] - options hash
+   * @param {String} [config.options.store="test"] - default store name
+   * @param {String} [config.options.prefix=""] - prefix for collections
+   * @param {Array<String>|String} [config.plugin] - additional plugins to merge
+   * @param {String} [config.temporalExtension="_temporal"] - temporal plugin extension
+   * @param {Object} [config.globals] - Factory globals definition
+   * @param {Object} [config.fields] - Factory fields definition
+   * @param {Object} config.types - Factory types definition
+   * @param {Object} [config.schemas] - Factory schemas definition
+   * @param {Object} [config.functions] - Factory functions definition
+   * @param {Object} [config.externalTypes] - Factory externalTypes definition
+   * @param {Object} [config.installData] - Seed data
+   *
+   * @callback callback
+   */
+  constructor (namespace, graphql, factory, config) {
     super()
 
-    let { name, extension, plugin, options, methods, globals, fields, functions, types, externalTypes } = config
-    let { temporalExtension } = config
+    let { name, extension, plugin, options, temporalExtension, globals, types, installData } = config
     let { prefix } = options || {}
 
     // check for required properties
@@ -45,7 +77,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
     this._namespace = namespace
     this._prefix = _.isString(prefix) ? prefix : ''
     this._defaultStore = _.get(config, 'options.store', 'test')
-    this._installData = {}
+    this._installData = installData || {}
     this._lib = null
     this._plugin = null
 
@@ -53,11 +85,32 @@ export default class GraphQLFactoryBaseBackend extends Events {
     _.set(this.definition, `globals["${this._extension}"]`, this)
   }
 
-  make () {
-    // make the backend definition
+  /**
+   * Compiled the backend
+   * @private
+   */
+  _compile () {
     let compiler = new GraphQLFactoryBackendCompiler(this)
     compiler.compile()
-    return this
+  }
+
+  /**
+   * Overridable make method, can accept a callback and returns a promise
+   * This should be used in the event your code requires some additional async
+   * code to be performed before considering the backend created
+   * @param callback
+   */
+  make (callback = () => true) {
+    return new Promise((resolve, reject) => {
+      try {
+        this._compile()
+        callback(null, this)
+        return resolve(this)
+      } catch (error) {
+        callback(error)
+        return reject(error)
+      }
+    })
   }
 
   /******************************************************************
@@ -81,6 +134,18 @@ export default class GraphQLFactoryBaseBackend extends Events {
 
   deleteResolver () {
     throw new Error('the deleteResolver method has not been overriden on the backend')
+  }
+
+  batchCreateResolver () {
+    throw new Error('the batchCreateResolver method has not been overriden on the backend')
+  }
+
+  batchUpdateResolver () {
+    throw new Error('the batchUpdateResolver method has not been overriden on the backend')
+  }
+
+  batchDeleteResolver () {
+    throw new Error('the batchDeleteResolver method has not been overriden on the backend')
   }
 
   subscribeResolver () {

@@ -1,9 +1,13 @@
 import _ from 'lodash'
+import pluralize from 'pluralize'
 
 export const CREATE = 'create'
 export const READ = 'read'
 export const UPDATE = 'update'
 export const DELETE = 'delete'
+export const BATCH_CREATE = 'batchCreate'
+export const BATCH_UPDATE = 'batchUpdate'
+export const BATCH_DELETE = 'batchDelete'
 export const QUERY = 'query'
 export const MUTATION = 'mutation'
 export const SUBSCRIPTION = 'subscription'
@@ -20,19 +24,49 @@ export const SCALAR = 'Scalar'
 export const ENUM = 'Enum'
 export const PRIMITIVES = [STRING, INT, FLOAT, BOOLEAN, ID]
 
+/**
+ * Determines if the operation is a batch operation
+ * @param {String} op - operation type
+ * @return {Boolean}
+ */
+function isBatchOperation (op) {
+  return _.includes([BATCH_CREATE, BATCH_UPDATE, BATCH_DELETE], op)
+}
+
+/**
+ * Generates a schema operation object name
+ * @param {String} schema - schema name
+ * @param {String} op - operation type: QUERY || MUTATION || SUBSCRIPTION
+ * @return {string}
+ */
 function makeObjectName (schema, op) {
   return `backend${_.capitalize(schema)}${_.capitalize(op)}`
 }
 
+/**
+ * Determines the primary key(s) for a type from its field definition
+ * @param {Object} fields - field definition
+ * @return {null|String|Array<String>}
+ */
 function getPrimary (fields) {
   let primary = _(fields).pickBy((v) => v.primary === true).keys().value()
   return !primary.length ? null : primary.length === 1 ? primary[0] : primary
 }
 
+/**
+ * Extracts the type name, since a type name enclosed in an array means it is a list type
+ * @param {String|Array<String>} type
+ * @return {String}
+ */
 function getTypeName (type) {
   return _.isArray(type) ? _.first(type) : type
 }
 
+/**
+ * Determines if the type is a graphql primitive
+ * @param {String} type
+ * @return {Boolean}
+ */
 function isPrimitive (type) {
   if (_.isArray(type)) {
     if (type.length !== 1) return false
@@ -41,11 +75,21 @@ function isPrimitive (type) {
   return _.includes(PRIMITIVES, type)
 }
 
+/**
+ * Gets the type from a field definition
+ * @param {Object|String|Array<String>} fieldDef - field definition
+ * @return {String|Array<String>}
+ */
 function getType (fieldDef) {
   if ((_.isArray(fieldDef) && fieldDef.length === 1) || _.isString(fieldDef)) return fieldDef
   else if (_.has(fieldDef, 'type')) return fieldDef.type
 }
 
+/**
+ * Ensures that the field definition is an Object with a type field
+ * @param {Object|String|Array<String>} fieldDef
+ * @return {Object}
+ */
 function makeFieldDef (fieldDef) {
   let def = _.merge({}, _.isObject(fieldDef) ? fieldDef : {})
   let type = getType(fieldDef)
@@ -53,6 +97,11 @@ function makeFieldDef (fieldDef) {
   return def
 }
 
+/**
+ * Determines fields that should be unique. uniqueWith fields are grouped by the provided group name
+ * @param {Object} fields - field definition
+ * @return {Array}
+ */
 function computeUniques (fields) {
   let [ mixed, uniques ] = [ {}, [] ]
   _.forEach(fields, (fieldDef, field) => {
@@ -68,10 +117,15 @@ function computeUniques (fields) {
   return _.uniq(uniques)
 }
 
-/*
- * Main compiler class
+/**
+ * GraphQL Factory Backend Compiler - updates the schema definition and generates resolvers
+ * based on backend extension definition for each type
  */
 export default class GraphQLFactoryBackendCompiler {
+  /**
+   * Initializes the compiler
+   * @param {GraphQLFactoryBackend} backend - instance of GraphQLFactoryBackend
+   */
   constructor (backend) {
     this.backend = backend
     this.defaultStore = backend._defaultStore
@@ -81,13 +135,22 @@ export default class GraphQLFactoryBackendCompiler {
     this.definition = backend.definition
   }
 
+  /**
+   * Compiles the definition and returns the compiler
+   * @return {GraphQLFactoryBackendCompiler}
+   */
   compileDefinition () {
     this.definition.compile()
     return this
   }
 
+  /**
+   * Performs the definition compile in a specific order
+   * @return {GraphQLFactoryDefinition}
+   */
   compile () {
     return this.extendTemporal()
+      .addInputTypes()
       .compileDefinition()
       .computeExtension()
       .buildRelations()
@@ -98,10 +161,40 @@ export default class GraphQLFactoryBackendCompiler {
       .value()
   }
 
+  /**
+   * Returns the current definition value
+   * @return {GraphQLFactoryDefinition}
+   */
   value () {
     return this.definition
   }
 
+  /**
+   * Adds input types for each object that has a collection backing it
+   * @return {GraphQLFactoryBackendCompiler}
+   */
+  addInputTypes () {
+    _.forEach(this.definition.types, (definition) => {
+      let { type } = definition
+      let { collection, table } = _.get(definition, `["${this.extension}"]`, {})
+      if (collection || table) {
+        if (!type) {
+          definition.type = ['Object', 'Input']
+        } else if (_.isArray(type)) {
+          if (!_.includes(type, 'Input')) type.push('Input')
+        } else if (_.isObject(type)) {
+          if (!_.has(type, 'Input')) type.Input = null
+        }
+      }
+    })
+
+    return this
+  }
+
+  /**
+   * Extends the definition with temporal fields if using the GraphQLFactoryTemporal plugin
+   * @return {GraphQLFactoryBackendCompiler}
+   */
   extendTemporal () {
     if (this.definition.hasPlugin('GraphQLFactoryTemporal')) {
       _.forEach(this.definition.types, (typeDef, typeName) => {
@@ -195,6 +288,10 @@ export default class GraphQLFactoryBackendCompiler {
     return this
   }
 
+  /**
+   * Calculates PrimaryKey, collection, store, uniques, etc for each type and stores it in the backend extension
+   * @return {GraphQLFactoryBackendCompiler}
+   */
   computeExtension () {
     _.forEach(this.definition.types, (definition) => {
       if (definition.type && definition.type !== OBJECT) {
@@ -230,6 +327,10 @@ export default class GraphQLFactoryBackendCompiler {
     return this
   }
 
+  /**
+   * Sets the appropriate query resolvers/hooks and adds any custom queries
+   * @return {GraphQLFactoryBackendCompiler}
+   */
   buildQueries () {
     _.forEach(this.definition.types, (definition, typeName) => {
       let _backend = _.get(definition, `["${this.extension}"]`, {})
@@ -248,14 +349,14 @@ export default class GraphQLFactoryBackendCompiler {
         let objName = makeObjectName(schema, QUERY)
         _.set(this.definition.schemas, `["${schema}"].query`, objName)
 
-        _.forEach(query, (opDef, name) => {
+        _.forEach(query, (opDef, opName) => {
           let { type, args, resolve, before, after } = opDef
-          let fieldName = name === READ ? `${name}${typeName}` : name
+          let fieldName = opName === READ ? `${opName}${typeName}` : opName
           let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
             type: type || [typeName],
-            args: args || this.buildArgs(definition, QUERY, typeName, name),
+            args: args || this.buildArgs(definition, QUERY, typeName, opName),
             resolve: resolveName
           })
 
@@ -276,6 +377,10 @@ export default class GraphQLFactoryBackendCompiler {
     return this
   }
 
+  /**
+   * Sets the appropriate mutation resolvers/hooks and adds any custom mutations
+   * @return {GraphQLFactoryBackendCompiler}
+   */
   buildMutations () {
     _.forEach(this.definition.types, (definition, typeName) => {
       let _backend = _.get(definition, `["${this.extension}"]`, {})
@@ -285,9 +390,28 @@ export default class GraphQLFactoryBackendCompiler {
       if (mutation === false || !collection) return
 
       mutation = _.isObject(mutation) ? mutation : {}
-      mutation.create = !mutation.create && mutation.create !== false ? true : mutation.create
-      mutation.update = !mutation.update && mutation.update !== false ? true : mutation.update
-      mutation.delete = !mutation.delete && mutation.delete !== false ? true : mutation.delete
+
+      // set single mutations
+      mutation.create = (!mutation.create && mutation.create !== false)
+        ? true
+        : mutation.create
+      mutation.update = (!mutation.update && mutation.update !== false)
+        ? true
+        : mutation.update
+      mutation.delete = (!mutation.delete && mutation.delete !== false)
+        ? true
+        : mutation.delete
+
+      // set batch mutations
+      mutation.batchCreate = (!mutation.batchCreate && mutation.batchCreate !== false)
+        ? true
+        : mutation.batchCreate
+      mutation.batchUpdate = (!mutation.batchUpdate && mutation.batchUpdate !== false)
+        ? true
+        : mutation.batchUpdate
+      mutation.batchDelete = (!mutation.batchDelete && mutation.batchDelete !== false)
+        ? true
+        : mutation.batchDelete
 
       // add properties for each schema type
       _.forEach(schemas, (schema) => {
@@ -296,20 +420,25 @@ export default class GraphQLFactoryBackendCompiler {
         let objName = makeObjectName(schema, MUTATION)
         _.set(this.definition.schemas, `["${schema}"].mutation`, objName)
 
-        _.forEach(mutation, (opDef, name) => {
+        _.forEach(mutation, (opDef, opName) => {
           let { type, args, resolve, before, after } = opDef
-          let ops = [CREATE, UPDATE, DELETE]
-          let fieldName = _.includes(ops, name) ? `${name}${typeName}` : name
+          let ops = [CREATE, UPDATE, DELETE, BATCH_CREATE, BATCH_UPDATE, BATCH_DELETE]
+          let fieldName = _.includes(ops, opName) ? `${opName}${typeName}` : opName
           let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
+          let isBatchOp = isBatchOperation(opName)
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
-            type: name === DELETE ? BOOLEAN : type || typeName,
-            args: args || this.buildArgs(definition, MUTATION, typeName, name),
+            type: (opName === DELETE || opName === BATCH_DELETE)
+              ? BOOLEAN
+              : type || isBatchOp
+                ? [typeName]
+                : typeName,
+            args: args || this.buildArgs(definition, MUTATION, typeName, opName),
             resolve: resolveName
           })
 
           if (opDef === true || !resolve) {
-            _.set(this.definition, `functions.${resolveName}`, this.backend[`${name}Resolver`](typeName))
+            _.set(this.definition, `functions.${resolveName}`, this.backend[`${opName}Resolver`](typeName))
           } else if (_.isFunction(resolve)) {
             _.set(this.definition, `functions.${resolveName}`, resolve)
           }
@@ -325,6 +454,10 @@ export default class GraphQLFactoryBackendCompiler {
     return this
   }
 
+  /**
+   * Creates pub-sub subscriptions for each type
+   * @return {GraphQLFactoryBackendCompiler}
+   */
   buildSubscriptions () {
     _.forEach(this.definition.types, (definition, typeName) => {
       let _backend = _.get(definition, `["${this.extension}"]`, {})
@@ -350,12 +483,12 @@ export default class GraphQLFactoryBackendCompiler {
         let objName = makeObjectName(schema, SUBSCRIPTION)
         _.set(this.definition.schemas, `["${schema}"].subscription`, objName)
 
-        _.forEach(subscription, (opDef, name) => {
+        _.forEach(subscription, (opDef, opName) => {
           let { type, args, resolve, before, after } = opDef
           let ops = [SUBSCRIBE, UNSUBSCRIBE]
-          let fieldName = _.includes(ops, name) ? `${name}${typeName}` : name
+          let fieldName = _.includes(ops, opName) ? `${opName}${typeName}` : opName
           let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
-          let returnType = name === UNSUBSCRIBE
+          let returnType = opName === UNSUBSCRIBE
             ? 'GraphQLFactoryUnsubscribeResponse'
             : type
               ? type
@@ -363,12 +496,12 @@ export default class GraphQLFactoryBackendCompiler {
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
             type: returnType,
-            args: args || this.buildArgs(definition, SUBSCRIPTION, typeName, name),
+            args: args || this.buildArgs(definition, SUBSCRIPTION, typeName, opName),
             resolve: resolveName
           })
 
           if (opDef === true || !resolve) {
-            _.set(this.definition, `functions.${resolveName}`, this.backend[`${name}Resolver`](typeName))
+            _.set(this.definition, `functions.${resolveName}`, this.backend[`${opName}Resolver`](typeName))
           } else if (_.isFunction(resolve)) {
             _.set(this.definition, `functions.${resolveName}`, resolve)
           }
@@ -384,6 +517,10 @@ export default class GraphQLFactoryBackendCompiler {
     return this
   }
 
+  /**
+   * Generates relation data for each type that can be used during read queries
+   * @return {GraphQLFactoryBackendCompiler}
+   */
   buildRelations () {
     _.forEach(this.definition.types, (definition, name) => {
       let fields = _.get(definition, 'fields', {})
@@ -428,6 +565,10 @@ export default class GraphQLFactoryBackendCompiler {
     return this
   }
 
+  /**
+   * For each argument in a query that is not a primitive, add sub query args to the field
+   * @return {GraphQLFactoryBackendCompiler}
+   */
   setListArgs () {
     _.forEach(this.definition.types, (typeDef, typeName) => {
       let schema = _.get(typeDef, `["${this.extension}"].computed.schemas[0]`)
@@ -451,17 +592,33 @@ export default class GraphQLFactoryBackendCompiler {
     return this
   }
 
-  /*
-   * Helper methods
+  /**
+   * Determines if the type is versioned using the temporal plugin
+   * @param typeDef
+   * @return {boolean}
    */
   isVersioned (typeDef) {
     return _.get(typeDef, `["${this.backend._temporalExtension}"].versioned`) === true
   }
 
+  /**
+   * Generates an arguments object based on the type definition
+   * @param {Object} definition - type definition
+   * @param {String} operation - query || mutation || subscription
+   * @param {String} rootName - name of the type for the current field
+   * @param {String} opName - operation name
+   * @return {Object}
+   */
   buildArgs (definition, operation, rootName, opName) {
     let args = {}
     let fields = _.get(definition, 'fields', {})
     let _backend = _.get(definition, `["${this.extension}"]`, {})
+
+    if (operation === MUTATION && _.includes([BATCH_DELETE, BATCH_UPDATE, BATCH_CREATE], opName)) {
+      return {
+        batch: { type: [`${rootName}Input`], nullable: false }
+      }
+    }
 
     // unsubscribe default gets set args
     if (operation === SUBSCRIPTION && opName === UNSUBSCRIBE) {

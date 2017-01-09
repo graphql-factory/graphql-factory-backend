@@ -1,9 +1,9 @@
 import _ from 'lodash'
 import Promise from 'bluebird'
-import Q from './q'
-import { violatesUnique } from './filter'
+import Q from '../common/q'
+import { violatesUnique } from '../common/filter'
 
-export default function create (backend, type) {
+export default function create (backend, type, batchMode = false) {
   // temporal plugin details
   let hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal')
   let temporalExt = backend._temporalExtension
@@ -16,9 +16,10 @@ export default function create (backend, type) {
     let { before, after, timeout } = backend.getTypeInfo(type, info)
     let q = Q(backend)
     let collection = backend.getCollection(type)
-    let fnPath = `backend_create${type}`
+    let fnPath = `backend_${batchMode ? 'batchC' : 'c'}reate${type}`
     let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
     let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
+    args = batchMode ? args.batch : args
 
     return new Promise((resolve, reject) => {
       return beforeHook.call(this, { source, args, context, info }, backend, (err) => {
@@ -41,14 +42,20 @@ export default function create (backend, type) {
             if (!_.isFunction(versionCreate)) {
               return reject(new Error(`could not find "temporalCreate" in globals`))
             }
-            create = versionCreate(type, args)
+            create = batchMode
+              ? versionCreate(type, args).coerceTo('ARRAY')
+              : versionCreate(type, args).coerceTo('ARRAY').nth(0)
           }
         } else {
           create = violatesUnique(backend, type, args, collection)
             .branch(
               r.error('unique field violation'),
               q.type(type)
-                .insert(args, { exists: backend.getRelatedValues(type, args) })
+                .insert(args, {
+                  exists: _.isArray(args)
+                    ? _.map((args) => backend.getRelatedValues(type, arg))
+                    : [backend.getRelatedValues(type, args)]
+                })
                 .value()
             )
         }
