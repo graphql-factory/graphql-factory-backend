@@ -7,7 +7,6 @@ function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'defau
 var Events = _interopDefault(require('events'));
 var _ = _interopDefault(require('lodash'));
 var Promise$1 = _interopDefault(require('bluebird'));
-var pluralize = require('pluralize');
 var graphql = require('graphql');
 var md5 = _interopDefault(require('js-md5'));
 

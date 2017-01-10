@@ -1,5 +1,4 @@
 import _ from 'lodash'
-import pluralize from 'pluralize'
 
 export const CREATE = 'create'
 export const READ = 'read'
