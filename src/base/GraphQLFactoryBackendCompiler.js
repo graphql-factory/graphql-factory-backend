@@ -467,9 +467,11 @@ export default class GraphQLFactoryBackendCompiler {
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
             type: (opName === DELETE || opName === BATCH_DELETE)
               ? BOOLEAN
-              : type || isBatchOp
-                ? [typeName]
-                : typeName,
+              : type
+                ? type
+                : isBatchOp
+                  ? [typeName]
+                  : typeName,
             args: args || this.buildArgs(definition, MUTATION, typeName, opName),
             resolve: resolveName
           })

@@ -642,7 +642,7 @@ var GraphQLFactoryBackendCompiler = function () {
             var isBatchOp = isBatchOperation(opName);
 
             _.set(_this6.definition.types, '["' + objName + '"].fields["' + fieldName + '"]', {
-              type: opName === DELETE || opName === BATCH_DELETE ? BOOLEAN : type || isBatchOp ? [typeName] : typeName,
+              type: opName === DELETE || opName === BATCH_DELETE ? BOOLEAN : type ? type : isBatchOp ? [typeName] : typeName,
               args: args || _this6.buildArgs(definition, MUTATION, typeName, opName),
               resolve: resolveName
             });
