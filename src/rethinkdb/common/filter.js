@@ -106,6 +106,9 @@ export function violatesUnique (backend, type, args, filter) {
     ? _.map((arg) => backend.getUniqueArgs(type, args))
     : [backend.getUniqueArgs(type, args)]
 
+  // if there are no uniques, return false
+  if (!_.flatten(unique).length) return r.expr(false)
+
   let uniqueViolation = _.reduce(unique, (result, value) => {
     return result && _.filter(unique, value).length > 1
   }, true)
@@ -139,6 +142,29 @@ export function violatesUnique (backend, type, args, filter) {
   return filter.coerceTo('array').do(() => r.expr(false))
 }
 
+/**
+ * Validates that related ids exist
+ * @param backend
+ * @param type
+ * @param args
+ * @param filter
+ */
+export function existsFilter (backend, type, args, filter) {
+  let { r } = backend
+  filter = filter || backend.getCollection(type)
+
+  // reduce the related values to a flat array
+  let exists = _(args).map((arg) => backend.getRelatedValues(type, arg)).flatten()
+    .reduce((result, value) => _.find(result, value) ? result : _.union(result, [value]), [])
+
+  // if there are no exists to check, tryutn true
+  if (!exists.length) return r.expr(true)
+
+  // otherwise perform a reduce
+  return r.expr(exists).prepend(true)
+    .reduce((prev, cur) => prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null)))
+}
+
 // get records that are not this one from a previous filter
 export function notThisRecord (backend, type, args, filter) {
   filter = filter || backend.getCollection(backend)
@@ -148,6 +174,7 @@ export function notThisRecord (backend, type, args, filter) {
 }
 
 export default {
+  existsFilter,
   getRelationFilter,
   getArgsFilter,
   violatesUnique,

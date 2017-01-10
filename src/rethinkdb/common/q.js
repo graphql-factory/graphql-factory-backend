@@ -172,15 +172,22 @@ export class GraphQLFactoryBackendQueryBuilder {
     let throwErrors = options.throwErrors === false ? false : true
     let isBatch = _.isArray(args)
     let { primaryKey } = this._b.getTypeComputed(this._type)
+
+    console.log('ARGS PRE', args)
+
     args = isBatch
       ? args
       : args
         ? [args]
         : []
 
+    console.log('ARGS POST', args)
+
     let id = isBatch
       ? _.map((arg) => this._b.getPrimaryFromArgs(this._type, arg))
       : [this._b.getPrimaryFromArgs(this._type, args)]
+
+    console.log('ID', id)
 
     // reduce the exists selection to a flat list of unique values
     let exists = _.reduce(_.flatten(_.isArray(options.exists) ?  options.exists : []), (result, value) => {
@@ -202,7 +209,7 @@ export class GraphQLFactoryBackendQueryBuilder {
           .do((summary) => {
             return summary('errors').ne(0).branch(
               r.error(summary('first_error')),
-              r.filter((f) => r.expr(id).contains(f(primaryKey)))
+              table.filter((f) => r.expr(id).contains(f(primaryKey)))
                 .coerceTo('ARRAY')
                 .do((results) => {
                   return r.expr(isBatch).branch(

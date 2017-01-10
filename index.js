@@ -299,6 +299,7 @@ var GraphQLFactoryBackendCompiler = function () {
     }
 
     /**
+     * TODO: change this to create individual types with a name like batchInputType
      * Adds input types for each object that has a collection backing it
      * @return {GraphQLFactoryBackendCompiler}
      */
@@ -331,6 +332,7 @@ var GraphQLFactoryBackendCompiler = function () {
     }
 
     /**
+     * TODO: in concert with the previous method, create new types
      * Sets the correct input type for each field
      * @returns {GraphQLFactoryBackendCompiler}
      */
@@ -642,7 +644,7 @@ var GraphQLFactoryBackendCompiler = function () {
             var isBatchOp = isBatchOperation(opName);
 
             _.set(_this6.definition.types, '["' + objName + '"].fields["' + fieldName + '"]', {
-              type: opName === DELETE || opName === BATCH_DELETE ? BOOLEAN : type ? type : isBatchOp ? [typeName] : typeName,
+              type: opName === DELETE || opName === BATCH_DELETE ? INT : type ? type : isBatchOp ? [typeName] : typeName,
               args: args || _this6.buildArgs(definition, MUTATION, typeName, opName),
               resolve: resolveName
             });
@@ -846,6 +848,7 @@ var GraphQLFactoryBackendCompiler = function () {
       var args = {};
       var fields = _.get(definition, 'fields', {});
       var _backend = _.get(definition, '["' + this.extension + '"]', {});
+      var primaryKey = _.get(_backend, 'computed.primaryKey', 'id');
 
       if (operation === MUTATION && _.includes([BATCH_DELETE, BATCH_UPDATE, BATCH_CREATE], opName)) {
         return {
@@ -873,7 +876,7 @@ var GraphQLFactoryBackendCompiler = function () {
         var typeDef = _.get(_this10.definition.types, '["' + typeName + '"]', {});
         var relations = _.get(typeDef, _this10.extension + '.computed.relations', {});
         fieldDef = fields[fieldName] = makeFieldDef(fieldDef);
-        var nullable = operation === MUTATION ? fieldDef.nullable : true;
+        var nullable = operation === MUTATION && opName === CREATE ? fieldDef.nullable : operation === MUTATION && fieldName === primaryKey ? false : true;
 
         // support protected fields which get removed from the args build
         if (fieldDef.protect === true && operation === MUTATION) return;
@@ -948,7 +951,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
   inherits(GraphQLFactoryBaseBackend, _Events);
 
   /**
-   *
+   * Initializes a backend instance
    * @param {String} namespace - namespace to using in globals
    * @param {Object} graphql - instance of graphql
    * @param {Object} factory - instance of graphql-factory
@@ -967,7 +970,6 @@ var GraphQLFactoryBaseBackend = function (_Events) {
    * @param {Object} [config.functions] - Factory functions definition
    * @param {Object} [config.externalTypes] - Factory externalTypes definition
    * @param {Object} [config.installData] - Seed data
-   *
    * @callback callback
    */
   function GraphQLFactoryBaseBackend(namespace, graphql$$1, factory, config) {
@@ -1695,11 +1697,17 @@ var GraphQLFactoryBackendQueryBuilder = function () {
       var _b$getTypeComputed = this._b.getTypeComputed(this._type),
           primaryKey = _b$getTypeComputed.primaryKey;
 
+      console.log('ARGS PRE', args);
+
       args = isBatch ? args : args ? [args] : [];
+
+      console.log('ARGS POST', args);
 
       var id = isBatch ? _.map(function (arg) {
         return _this._b.getPrimaryFromArgs(_this._type, arg);
       }) : [this._b.getPrimaryFromArgs(this._type, args)];
+
+      console.log('ID', id);
 
       // reduce the exists selection to a flat list of unique values
       var exists = _.reduce(_.flatten(_.isArray(options.exists) ? options.exists : []), function (result, value) {
@@ -1711,7 +1719,7 @@ var GraphQLFactoryBackendQueryBuilder = function () {
       }).not().branch(throwErrors ? r.error('one or more related records were not found') : null, r.expr(args).forEach(function (arg) {
         return table.get(arg(primaryKey)).eq(null).branch(r.error(_this._type + ' with id ' + arg(primaryKey) + ' was not found, and could not be updated'), table.get(arg(primaryKey)).update(arg, { returnChanges: true }));
       }).pluck('errors', 'first_error').do(function (summary) {
-        return summary('errors').ne(0).branch(r.error(summary('first_error')), r.filter(function (f) {
+        return summary('errors').ne(0).branch(r.error(summary('first_error')), table.filter(function (f) {
           return r.expr(id).contains(f(primaryKey));
         }).coerceTo('ARRAY').do(function (results) {
           return r.expr(isBatch).branch(results, results.nth(0));
@@ -1807,7 +1815,7 @@ var GraphQLFactoryBackendQueryBuilder = function () {
   return GraphQLFactoryBackendQueryBuilder;
 }();
 
-var Q = function (backend) {
+var q = function (backend) {
   return new GraphQLFactoryBackendQueryBuilder(backend);
 };
 
@@ -1928,6 +1936,9 @@ function violatesUnique(backend, type, args, filter) {
     return backend.getUniqueArgs(type, args);
   }) : [backend.getUniqueArgs(type, args)];
 
+  // if there are no uniques, return false
+  if (!_.flatten(unique).length) return r.expr(false);
+
   var uniqueViolation = _.reduce(unique, function (result, value) {
     return result && _.filter(unique, value).length > 1;
   }, true);
@@ -1950,6 +1961,34 @@ function violatesUnique(backend, type, args, filter) {
   });
 }
 
+/**
+ * Validates that related ids exist
+ * @param backend
+ * @param type
+ * @param args
+ * @param filter
+ */
+function existsFilter(backend, type, args, filter) {
+  var r = backend.r;
+
+  filter = filter || backend.getCollection(type);
+
+  // reduce the related values to a flat array
+  var exists = _(args).map(function (arg) {
+    return backend.getRelatedValues(type, arg);
+  }).flatten().reduce(function (result, value) {
+    return _.find(result, value) ? result : _.union(result, [value]);
+  }, []);
+
+  // if there are no exists to check, tryutn true
+  if (!exists.length) return r.expr(true);
+
+  // otherwise perform a reduce
+  return r.expr(exists).prepend(true).reduce(function (prev, cur) {
+    return prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null));
+  });
+}
+
 // get records that are not this one from a previous filter
 function notThisRecord(backend, type, args, filter) {
   filter = filter || backend.getCollection(backend);
@@ -1964,37 +2003,47 @@ function notThisRecord(backend, type, args, filter) {
 }
 
 var filter$1 = {
+  existsFilter: existsFilter,
   getRelationFilter: getRelationFilter,
   getArgsFilter: getArgsFilter,
   violatesUnique: violatesUnique,
   notThisRecord: notThisRecord
 };
 
+/**
+ * Create resolver - used as a standard create resolver function
+ * @param {Object} backend - factory backend instance
+ * @param {String} type - GraphQL type name to create
+ * @param {Boolean} [batchMode=false] - allow batch changes
+ * @returns {Function}
+ */
 function create(backend, type) {
   var batchMode = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;
-
-  // temporal plugin details
-  var hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal');
-  var temporalExt = backend._temporalExtension;
-  var typeDef = _.get(backend.definition, 'types["' + type + '"]');
-  var temporalDef = _.get(typeDef, '["' + temporalExt + '"]');
-  var isVersioned = _.get(temporalDef, 'versioned') === true;
 
   return function (source, args) {
     var _this = this;
 
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
+
+    // temporal plugin details
+    var hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal');
+    var temporalExt = backend._temporalExtension;
+    var typeDef = _.get(backend.definition, 'types["' + type + '"]');
+    var temporalDef = _.get(typeDef, '["' + temporalExt + '"]');
+    var isVersioned = _.get(temporalDef, 'versioned') === true;
+
+    // standard details
     var r = backend.r,
-        connection = backend.connection,
+        _connection = backend._connection,
         definition = backend.definition;
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         before = _backend$getTypeInfo.before,
         after = _backend$getTypeInfo.after,
-        timeout = _backend$getTypeInfo.timeout;
+        timeout = _backend$getTypeInfo.timeout,
+        primaryKey = _backend$getTypeInfo.primaryKey;
 
-    var q = Q(backend);
     var collection = backend.getCollection(type);
     var fnPath = 'backend_' + (batchMode ? 'batchC' : 'c') + 'reate' + type;
     var beforeHook = _.get(before, fnPath, function (args, backend, done) {
@@ -2003,42 +2052,66 @@ function create(backend, type) {
     var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
       return done(null, result);
     });
-    args = batchMode ? args.batch : args;
 
+    // ensure that the args are an array
+    args = batchMode ? args.batch : [args];
+
+    // create new promise
     return new Promise$1(function (resolve, reject) {
-      return beforeHook.call(_this, { source: source, args: args, context: context, info: info }, backend, function (err) {
-        if (err) return reject(err);
-        var create = null;
+      var create = null;
+
+      // run before hook
+      return beforeHook.call(_this, {
+        source: source,
+        args: batchMode ? args : _.first(args),
+        context: context,
+        info: info
+      }, backend, function (error) {
+        if (error) return reject(error);
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
+          // check that temporal create is allowed
           if (temporalDef.create === false) return reject(new Error('create is not allowed on this temporal type'));
+
+          // if a function was specified, use it
           if (_.isFunction(temporalDef.create)) {
             return resolve(temporalDef.create.call(_this, source, args, context, info));
-          } else if (_.isString(temporalDef.create)) {
-            var temporalCreate = _.get(definition, 'functions["' + temporalDef.create + '"]');
-            if (!_.isFunction(temporalCreate)) {
-              return reject(new Error('cannot find function "' + temporalDef.create + '"'));
-            }
-            return resolve(temporalCreate.call(_this, source, args, context, info));
-          } else {
-            var versionCreate = _.get(_this, 'globals["' + temporalExt + '"].temporalCreate');
-            if (!_.isFunction(versionCreate)) {
-              return reject(new Error('could not find "temporalCreate" in globals'));
-            }
-            create = batchMode ? versionCreate(type, args).coerceTo('ARRAY') : versionCreate(type, args).coerceTo('ARRAY').nth(0);
           }
-        } else {
-          create = violatesUnique(backend, type, args, collection).branch(r.error('unique field violation'), q.type(type).insert(args, {
-            exists: _.isArray(args) ? _.map(function (args) {
-              return backend.getRelatedValues(type, arg);
-            }) : [backend.getRelatedValues(type, args)]
-          }).value());
+
+          // if a resolver reference, use that if it exists
+          else if (_.isString(temporalDef.create)) {
+              var temporalCreate = _.get(definition, 'functions["' + temporalDef.create + '"]');
+              if (!_.isFunction(temporalCreate)) {
+                return reject(new Error('cannot find function "' + temporalDef.create + '"'));
+              }
+              return resolve(temporalCreate.call(_this, source, args, context, info));
+            }
+
+            // otherwise use the default version update function
+            else {
+                var versionCreate = _.get(_this, 'globals["' + temporalExt + '"].temporalCreate');
+                if (!_.isFunction(versionCreate)) {
+                  return reject(new Error('could not find "temporalCreate" in globals'));
+                }
+                create = batchMode ? versionCreate(type, args).coerceTo('ARRAY') : versionCreate(type, args).coerceTo('ARRAY').nth(0);
+              }
         }
 
-        return create.run(connection).then(function (result) {
-          return afterHook.call(_this, result, args, backend, function (err, result) {
-            if (err) return reject(err);
+        // handle standard create
+        else {
+            // generate a create query with checks
+            create = violatesUnique(backend, type, args, collection).branch(r.error('unique field violation'), existsFilter(backend, type, args, collection).not().branch(r.error('one or more related records were not found'), collection.insert(args, { returnChanges: true }).pluck('errors', 'first_error', 'changes').do(function (summary) {
+              return summary('errors').ne(0).branch(r.error(summary('first_error')), summary('changes')('new_val').coerceTo('ARRAY').do(function (results) {
+                return r.expr(batchMode).branch(results, results.nth(0));
+              }));
+            })));
+          }
+
+        // run the query
+        return create.run(_connection).then(function (result) {
+          return afterHook.call(_this, result, batchMode ? args : _.first(args), backend, function (error, result) {
+            if (error) return reject(error);
             return resolve(result);
           });
         }).catch(reject);
@@ -2150,23 +2223,32 @@ function read(backend, type) {
   };
 }
 
-function update$1(backend, type) {
+/**
+ * Update resolver - used as a standard update resolver function
+ * @param {Object} backend - factory backend instance
+ * @param {String} type - GraphQL type name to create
+ * @param {Boolean} [batchMode=false] - allow batch changes
+ * @returns {Function}
+ */
+var _updateResolver = function (backend, type) {
   var batchMode = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;
-
-  // temporal plugin details
-  var hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal');
-  var temporalExt = backend._temporalExtension;
-  var typeDef = _.get(backend.definition, 'types["' + type + '"]');
-  var temporalDef = _.get(typeDef, '["' + temporalExt + '"]');
-  var isVersioned = _.get(temporalDef, 'versioned') === true;
 
   return function (source, args) {
     var _this = this;
 
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
+
+    // temporal plugin details
+    var hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal');
+    var temporalExt = backend._temporalExtension;
+    var typeDef = _.get(backend.definition, 'types["' + type + '"]');
+    var temporalDef = _.get(typeDef, '["' + temporalExt + '"]');
+    var isVersioned = _.get(temporalDef, 'versioned') === true;
+
+    // standard details
     var r = backend.r,
-        connection = backend.connection,
+        _connection = backend._connection,
         definition = backend.definition;
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
@@ -2175,7 +2257,6 @@ function update$1(backend, type) {
         timeout = _backend$getTypeInfo.timeout,
         primaryKey = _backend$getTypeInfo.primaryKey;
 
-    var q = Q(backend);
     var collection = backend.getCollection(type);
     var fnPath = 'backend_' + (batchMode ? 'batchU' : 'u') + 'pdate' + type;
     var beforeHook = _.get(before, fnPath, function (args, backend, done) {
@@ -2184,82 +2265,121 @@ function update$1(backend, type) {
     var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
       return done(null, result);
     });
-    args = batchMode ? args.batch : args;
-    var argArr = _.isArray(args) ? args : [args];
 
-    var ids = _.map(_.filter(argArr, primaryKey), primaryKey);
-    if (ids.length !== argArr.length) return r.error('missing primary key on one or more inputs');
+    // ensure that the args are an array
+    args = batchMode ? args.batch : [args];
 
+    // create a new promise
     return new Promise$1(function (resolve, reject) {
-      return beforeHook.call(_this, { source: source, args: args, context: context, info: info }, backend, function (err) {
-        if (err) return reject(err);
+      // run before hook
+      return beforeHook.call(_this, {
+        source: source,
+        args: batchMode ? args : _.first(args),
+        context: context,
+        info: info
+      }, backend, function (error) {
+        if (error) return reject(error);
+
+        // pull the ids from the args
         var update = null;
+        var ids = _.map(_.filter(args, primaryKey), primaryKey);
+        if (ids.length !== args.length) return reject('missing primaryKey "' + primaryKey + '" in update argument');
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
+          // check that temporal update is allowed
           if (temporalDef.update === false) return reject(new Error('update is not allowed on this temporal type'));
+
+          // if a function was specified, use it
           if (_.isFunction(temporalDef.update)) {
             return resolve(temporalDef.update.call(_this, source, args, context, info));
-          } else if (_.isString(temporalDef.update)) {
-            var temporalUpdate = _.get(definition, 'functions["' + temporalDef.update + '"]');
-            if (!_.isFunction(temporalUpdate)) {
-              return reject(new Error('cannot find function "' + temporalDef.update + '"'));
-            }
-            return resolve(temporalUpdate.call(_this, source, args, context, info));
-          } else {
-            var versionUpdate = _.get(_this, 'globals["' + temporalExt + '"].temporalUpdate');
-            if (!_.isFunction(versionUpdate)) {
-              return reject(new Error('could not find "temporalUpdate" in globals'));
-            }
-            update = batchMode ? versionUpdate(type, args).coerceTo('ARRAY') : versionUpdate(type, args).coerceTo('ARRAY').nth(0);
           }
-        } else {
-          var notThis = collection.filter(function (f) {
-            return r.expr(ids).contains(f(primaryKey)).not();
-          });
 
-          update = violatesUnique(backend, type, args, notThis).branch(r.error('unique field violation'), q.type(type).update(args, {
-            exists: _.isArray(args) ? _.map(function (args) {
-              return backend.getRelatedValues(type, arg);
-            }) : [backend.getRelatedValues(type, args)]
-          }).value());
+          // if a resolver reference, use that if it exists
+          else if (_.isString(temporalDef.update)) {
+              var temporalUpdate = _.get(definition, 'functions["' + temporalDef.update + '"]');
+              if (!_.isFunction(temporalUpdate)) {
+                return reject(new Error('cannot find function "' + temporalDef.update + '"'));
+              }
+              return resolve(temporalUpdate.call(_this, source, args, context, info));
+            }
+
+            // otherwise use the default version update function
+            else {
+                var versionUpdate = _.get(_this, 'globals["' + temporalExt + '"].temporalUpdate');
+                if (!_.isFunction(versionUpdate)) {
+                  return reject(new Error('could not find "temporalUpdate" in globals'));
+                }
+                update = batchMode ? versionUpdate(type, args).coerceTo('ARRAY') : versionUpdate(type, args).coerceTo('ARRAY').nth(0);
+              }
         }
 
-        return update.run(connection).then(function (result) {
-          return afterHook.call(_this, result, args, backend, function (err, result) {
-            if (err) return reject(err);
+        // handle standard update
+        else {
+            // filter out the current selections
+            var notThese = collection.filter(function (f) {
+              return r.expr(ids).contains(f(primaryKey)).not();
+            });
+
+            // generate an update query with checks
+            update = violatesUnique(backend, type, args, notThese).branch(r.error('unique field violation'), existsFilter(backend, type, args, collection).not().branch(r.error('one or more related records were not found'), r.expr(args).forEach(function (arg) {
+              return collection.get(arg(primaryKey)).eq(null).branch(r.error(type + ' with id ' + arg(primaryKey) + ' was not found, and could not be updated'), collection.get(arg(primaryKey)).update(arg, { returnChanges: true }));
+            }).pluck('errors', 'first_error').do(function (summary) {
+              return summary('errors').ne(0).branch(r.error(summary('first_error')), collection.filter(function (f) {
+                return r.expr(ids).contains(f(primaryKey));
+              }).coerceTo('ARRAY').do(function (results) {
+                return r.expr(batchMode).branch(results, results.nth(0));
+              }));
+            })));
+          }
+
+        // run the query
+        update.run(_connection).then(function (result) {
+          return afterHook.call(_this, result, batchMode ? args : _.first(args), backend, function (error, result) {
+            if (error) return reject(error);
             return resolve(result);
           });
         }).catch(reject);
       });
     }).timeout(timeout || 10000);
   };
-}
+};
 
+/**
+ * Delete resolver - used as a standard delete resolver function
+ * @param {Object} backend - factory backend instance
+ * @param {String} type - GraphQL type name to create
+ * @param {Boolean} [batchMode=false] - allow batch changes
+ * @returns {Function}
+ */
 function del(backend, type) {
   var batchMode = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;
-
-  // temporal plugin details
-  var hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal');
-  var temporalExt = backend._temporalExtension;
-  var typeDef = _.get(backend.definition, 'types["' + type + '"]');
-  var temporalDef = _.get(typeDef, '["' + temporalExt + '"]');
-  var isVersioned = _.get(temporalDef, 'versioned') === true;
 
   return function (source, args) {
     var _this = this;
 
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
-    var connection = backend.connection,
+
+    // temporal plugin details
+    var hasTemporalPlugin = backend.definition.hasPlugin('GraphQLFactoryTemporal');
+    var temporalExt = backend._temporalExtension;
+    var typeDef = _.get(backend.definition, 'types["' + type + '"]');
+    var temporalDef = _.get(typeDef, '["' + temporalExt + '"]');
+    var isVersioned = _.get(temporalDef, 'versioned') === true;
+
+    // standard details
+    var r = backend.r,
+        _connection = backend._connection,
         definition = backend.definition;
 
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         before = _backend$getTypeInfo.before,
         after = _backend$getTypeInfo.after,
-        timeout = _backend$getTypeInfo.timeout;
+        timeout = _backend$getTypeInfo.timeout,
+        primaryKey = _backend$getTypeInfo.primaryKey;
 
-    var q = Q(backend);
+    var collection = backend.getCollection(type);
     var fnPath = 'backend_' + (batchMode ? 'batchD' : 'd') + 'elete' + type;
     var beforeHook = _.get(before, fnPath, function (args, backend, done) {
       return done();
@@ -2267,38 +2387,67 @@ function del(backend, type) {
     var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
       return done(null, result);
     });
-    args = batchMode ? args.batch : args;
 
+    // ensure that the args are an array
+    args = batchMode ? args.batch : [args];
+
+    // create a new promise
     return new Promise$1(function (resolve, reject) {
-      return beforeHook.call(_this, { source: source, args: args, context: context, info: info }, backend, function (err) {
-        if (err) return reject(err);
+      return beforeHook.call(_this, {
+        source: source,
+        args: batchMode ? args : _.first(args),
+        context: context,
+        info: info
+      }, backend, function (error) {
+        if (error) return reject(error);
+
+        // pull the ids from the args
         var del = null;
+        var ids = _.map(_.filter(args, primaryKey), primaryKey);
+        if (ids.length !== args.length) return reject('missing primaryKey "' + primaryKey + '" in update argument');
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
+          // check that temporal update is allowed
           if (temporalDef.delete === false) return reject(new Error('delete is not allowed on this temporal type'));
+
+          // if a function was specified, use it
           if (_.isFunction(temporalDef.delete)) {
             return resolve(temporalDef.delete.call(_this, source, args, context, info));
-          } else if (_.isString(temporalDef.delete)) {
-            var temporalDelete = _.get(definition, 'functions["' + temporalDef.delete + '"]');
-            if (!_.isFunction(temporalDelete)) {
-              return reject(new Error('cannot find function "' + temporalDef.delete + '"'));
-            }
-            return resolve(temporalDelete.call(_this, source, args, context, info));
-          } else {
-            var versionDelete = _.get(_this, 'globals["' + temporalExt + '"].temporalDelete');
-            if (!_.isFunction(versionDelete)) {
-              return reject(new Error('could not find "temporalDelete" in globals'));
-            }
-            del = versionDelete(type, args);
           }
-        } else {
-          del = q.type(type).delete(args);
+
+          // if a resolver reference, use that if it exists
+          else if (_.isString(temporalDef.delete)) {
+              var temporalDelete = _.get(definition, 'functions["' + temporalDef.delete + '"]');
+              if (!_.isFunction(temporalDelete)) {
+                return reject(new Error('cannot find function "' + temporalDef.delete + '"'));
+              }
+              return resolve(temporalDelete.call(_this, source, args, context, info));
+            }
+
+            // otherwise use the default version update function
+            else {
+                var versionDelete = _.get(_this, 'globals["' + temporalExt + '"].temporalDelete');
+                if (!_.isFunction(versionDelete)) {
+                  return reject(new Error('could not find "temporalDelete" in globals'));
+                }
+                del = versionDelete(type, args);
+              }
         }
 
-        return del.run(connection).then(function (result) {
-          return afterHook.call(_this, result, args, backend, function (err, result) {
-            if (err) return reject(err);
+        // handle standard delete
+        else {
+            del = r.expr(ids).forEach(function (id) {
+              return collection.get(id).eq(null).branch(r.error(type + ' with id ' + id + ' was not found and cannot be deleted'), collection.get(id).delete({ returnChanges: true }));
+            }).pluck('errors', 'first_error', 'deleted').do(function (summary) {
+              return summary('errors').ne(0).branch(r.error(summary('first_error')), summary('deleted'));
+            });
+          }
+
+        // run the query
+        del.run(_connection).then(function (result) {
+          return afterHook.call(_this, result, batchMode ? args : _.first(args), backend, function (error, result) {
+            if (error) return reject(error);
             return resolve(result);
           });
         }).catch(reject);
@@ -2719,7 +2868,7 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
 
     // utils
     _this.filter = filter$1;
-    _this.q = Q(_this);
+    _this.q = q(_this);
 
     // subscription manager
     _this.subscriptionManager = new SubscriptionManager(_this);
@@ -2767,7 +2916,7 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
   }, {
     key: 'updateResolver',
     value: function updateResolver(type) {
-      return update$1(this, type);
+      return _updateResolver(this, type);
     }
   }, {
     key: 'deleteResolver',
@@ -2782,7 +2931,7 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
   }, {
     key: 'batchUpdateResolver',
     value: function batchUpdateResolver(type) {
-      return update$1(this, type, true);
+      return _updateResolver(this, type, true);
     }
   }, {
     key: 'batchDeleteResolver',

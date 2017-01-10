@@ -16,7 +16,7 @@ import GraphQLFactoryBackendCompiler from './GraphQLFactoryBackendCompiler'
 export default class GraphQLFactoryBaseBackend extends Events {
 
   /**
-   *
+   * Initializes a backend instance
    * @param {String} namespace - namespace to using in globals
    * @param {Object} graphql - instance of graphql
    * @param {Object} factory - instance of graphql-factory
@@ -35,7 +35,6 @@ export default class GraphQLFactoryBaseBackend extends Events {
    * @param {Object} [config.functions] - Factory functions definition
    * @param {Object} [config.externalTypes] - Factory externalTypes definition
    * @param {Object} [config.installData] - Seed data
-   *
    * @callback callback
    */
   constructor (namespace, graphql, factory, config) {

@@ -170,6 +170,7 @@ export default class GraphQLFactoryBackendCompiler {
   }
 
   /**
+   * TODO: change this to create individual types with a name like batchInputType
    * Adds input types for each object that has a collection backing it
    * @return {GraphQLFactoryBackendCompiler}
    */
@@ -192,6 +193,7 @@ export default class GraphQLFactoryBackendCompiler {
   }
 
   /**
+   * TODO: in concert with the previous method, create new types
    * Sets the correct input type for each field
    * @returns {GraphQLFactoryBackendCompiler}
    */
@@ -466,7 +468,7 @@ export default class GraphQLFactoryBackendCompiler {
 
           _.set(this.definition.types, `["${objName}"].fields["${fieldName}"]`, {
             type: (opName === DELETE || opName === BATCH_DELETE)
-              ? BOOLEAN
+              ? INT
               : type
                 ? type
                 : isBatchOp
@@ -652,6 +654,7 @@ export default class GraphQLFactoryBackendCompiler {
     let args = {}
     let fields = _.get(definition, 'fields', {})
     let _backend = _.get(definition, `["${this.extension}"]`, {})
+    let primaryKey = _.get(_backend, 'computed.primaryKey', 'id')
 
     if (operation === MUTATION && _.includes([BATCH_DELETE, BATCH_UPDATE, BATCH_CREATE], opName)) {
       return {
@@ -679,7 +682,11 @@ export default class GraphQLFactoryBackendCompiler {
       let typeDef = _.get(this.definition.types, `["${typeName}"]`, {})
       let relations = _.get(typeDef, `${this.extension}.computed.relations`, {})
       fieldDef = fields[fieldName] = makeFieldDef(fieldDef)
-      let nullable = operation === MUTATION ? fieldDef.nullable : true
+      let nullable = (operation === MUTATION && opName === CREATE)
+        ? fieldDef.nullable
+        : (operation === MUTATION && fieldName === primaryKey)
+          ? false
+          : true
 
       // support protected fields which get removed from the args build
       if (fieldDef.protect === true && operation === MUTATION) return
