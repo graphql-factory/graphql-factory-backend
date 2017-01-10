@@ -356,6 +356,18 @@ export default class GraphQLFactoryBaseBackend extends Events {
     return filters
   }
 
+  extendsType (type, types) {
+    let typeDef = _.get(this.getTypeDefinition(type), 'type', ['Object'])
+    let rawTypes = []
+
+    // pull the types from the type field
+    if (_.isArray(typeDef)) rawTypes = _.map(typeDef, (def) => _.isString(def) ? def : _.first(_.keys(def)))
+    else if (_.isObject(typeDef)) rawTypes = _.keys(typeDef)
+    else if (_.isString(typeDef)) rawTypes = [typeDef]
+
+    return _.intersection(rawTypes, _.isArray(types) ? types : [types])
+  }
+
   isNested (info) {
     // support for current and previous graphql info objects
     let infoPath = _.get(info, 'path', [])

@@ -154,6 +154,7 @@ export default class GraphQLFactoryBackendCompiler {
       .compileDefinition()
       .computeExtension()
       .buildRelations()
+      .setInputFields()
       .buildQueries()
       .buildMutations()
       .buildSubscriptions()
@@ -175,7 +176,7 @@ export default class GraphQLFactoryBackendCompiler {
    */
   addInputTypes () {
     _.forEach(this.definition.types, (definition) => {
-      let { type } = definition
+      let { type, fields } = definition
       let { collection, table } = _.get(definition, `["${this.extension}"]`, {})
       if (collection || table) {
         if (!type) {
@@ -188,6 +189,43 @@ export default class GraphQLFactoryBackendCompiler {
       }
     })
 
+    return this
+  }
+
+  /**
+   * Sets the correct input type for each field
+   * @returns {GraphQLFactoryBackendCompiler}
+   */
+  setInputFields () {
+    _.forEach(this.definition.types, (definition, name) => {
+      let { type, fields } = definition
+      if (type !== 'Input') return
+      let removes = []
+
+      _.forEach(fields, (fieldDef, fieldName) => {
+        // check for non conditional field definitions
+        if (_.isArray(fieldDef) || _.isString(fieldDef) || _.has(fieldDef, 'type')) {
+          let fieldType = getType(makeFieldDef(fieldDef))
+          let typeName = getTypeName(fieldType)
+          let isList = _.isArray(fieldType)
+
+          // check for primitives and objects that do not require an input type
+          if (_.has(fieldDef, 'belongsTo')) {
+            removes.push(fieldName)
+          } else if (!isPrimitive(typeName) && !this.backend.extendsType(typeName, ['Input', 'Enum', 'Scalar']).length) {
+            let relations = _.get(this.backend.getTypeComputed(typeName), 'relations')
+            let belongsTo = _(_.get(relations, 'belongsTo'))
+              .map((val) => _.keys(val))
+              .flatten()
+              .value()
+
+            if (_.includes(belongsTo, fieldName)) removes.push(fieldName)
+            else fieldDef.type = isList ? [`${typeName}Input`] : `${typeName}Input`
+          }
+        }
+      })
+      _.forEach(removes, (fName) => delete fields[fName])
+    })
     return this
   }
 
