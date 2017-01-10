@@ -1,5 +1,5 @@
 import _ from 'lodash'
-import md5 from 'md5'
+import md5 from 'js-md5'
 import Events from 'events'
 
 export default class SubscriptionManager extends Events {

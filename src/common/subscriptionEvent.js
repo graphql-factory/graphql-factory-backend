@@ -1,5 +1,5 @@
 import _ from 'lodash'
-import md5 from 'md5'
+import md5 from 'js-md5'
 
 export default function subscriptionEvent (name, args = {}) {
   if (!name) throw new Error('subscriptionEvent creation requires a subscription name')
