@@ -260,9 +260,9 @@ export default class GraphQLFactoryBackendCompiler {
               ? !primary
               : true
 
-          // check for primary key which is always required
+          // check for primary key which is always required for update and remove
           if (fieldName === primaryKey) {
-            _.set(create, `fields["${fieldName}"]`, { type, nullable: false })
+            _.set(create, `fields["${fieldName}"]`, { type, nullable: true })
             _.set(update, `fields["${fieldName}"]`, { type, nullable: false })
             _.set(remove, `fields["${fieldName}"]`, { type, nullable: false })
           }
