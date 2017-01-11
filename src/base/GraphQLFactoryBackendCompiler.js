@@ -190,8 +190,8 @@ export default class GraphQLFactoryBackendCompiler {
   compile () {
     return this.extendTemporal()
       .compileDefinition()
-      .addInputTypes()
       .computeExtension()
+      .addInputTypes()
       .buildRelations()
       .buildQueries()
       .buildMutations()
@@ -213,21 +213,21 @@ export default class GraphQLFactoryBackendCompiler {
    * @return {GraphQLFactoryBackendCompiler}
    */
   addInputTypes () {
-    let extendsType = this.backend.extendsType
-    let getTypeComputed = this.backend.getTypeComputed
+    let be = this.backend
+    let types = this.definition.types
 
-    _.forEach(this.definition.types, (typeDef, typeName) => {
+    _.forEach(types, (typeDef, typeName) => {
       let { type, fields } = typeDef
-      let { relations, primaryKey } = getTypeComputed(typeName) || {}
+      let { relations, collection, primaryKey } = be.getTypeComputed(typeName) || {}
       let versioned = this.isVersioned(typeDef)
 
-      if (isObjectType(type)) {
-        // initialize the create and update input types
-        // both are created because update should require different fields
-        let create = { type: 'Input', fields: {} }
-        let update = { type: 'Input', fields: {} }
-        let remove = { type: 'Input', fields: {} }
+      // initialize the create and update input types
+      // both are created because update should require different fields
+      let create = { type: 'Input', fields: {} }
+      let update = { type: 'Input', fields: {} }
+      let remove = { type: 'Input', fields: {} }
 
+      if (isObjectType(type)) {
         // get the computed belongsTo relations
         let belongsToRelations = _(_.get(relations, 'belongsTo'))
           .map((val) => _.keys(val))
@@ -278,19 +278,24 @@ export default class GraphQLFactoryBackendCompiler {
 
           // check for primitive that requires no extra processing
           else if (isPrimitive(fieldTypeName)
-            || extendsType(fieldTypeName, ['Input', 'Enum', 'Scalar']).length) {
+            || be.extendsType(fieldTypeName, ['Input', 'Enum', 'Scalar']).length) {
             _.set(create, `fields["${fieldName}"]`, { type, nullable })
             _.set(update, `fields["${fieldName}"]`, { type })
           }
 
           // check for valid extended types
-          else if (extendsType(fieldTypeName, ['Object']).length) {
+          else if (be.extendsType(fieldTypeName, ['Object']).length) {
             // if the field is a relation, the type should be the fields foreign key
             if (has) {
               let relatedFk = _.get(has, 'foreignKey', has)
-              let relatedDef = _.get(this.definition.types, `["${fieldName}"].fields["${relatedFk}"]`)
+              let relatedFields = _.get(types, `["${fieldTypeName}"].fields`)
+              let relatedDef = _.get(relatedFields, relatedFk)
               let relatedType = getTypeName(getType(makeFieldDef(relatedDef)))
 
+              // if the related type cannot be resolved return
+              if (!relatedType) return true
+
+              // otherwise set the create and update fields
               _.set(create, `fields["${fieldName}"]`, {
                 type: isList ? [relatedType] : relatedType,
                 nullable
@@ -327,9 +332,9 @@ export default class GraphQLFactoryBackendCompiler {
         }
 
         // add the types to the definition
-        this.definition.types[makeInputName(typeName, CREATE)] = create
-        this.definition.types[makeInputName(typeName, UPDATE)] = update
-        this.definition.types[makeInputName(typeName, DELETE)] = remove
+        if (!_.isEmpty(create.fields)) types[makeInputName(typeName, CREATE)] = create
+        if (!_.isEmpty(update.fields)) types[makeInputName(typeName, UPDATE)] = update
+        if (!_.isEmpty(remove.fields)) types[makeInputName(typeName, DELETE)] = remove
       }
     })
 
@@ -445,10 +450,11 @@ export default class GraphQLFactoryBackendCompiler {
       }
 
       let fields = _.get(definition, 'fields', {})
-      let ext = _.get(definition, `["${this.extension}"]`, {})
-      let { schema, table, collection, store, db, mutation, query } = ext
+      let ext = _.get(definition, `["${this.extension}"]`)
 
       if (!_.isObject(fields) || !_.isObject(ext)) return true
+
+      let { schema, table, collection, store, db, mutation, query } = ext
       let computed = ext.computed = {}
 
       computed.collection = `${this.prefix}${collection || table}`
@@ -461,6 +467,20 @@ export default class GraphQLFactoryBackendCompiler {
       // get the primary key name
       let primary = computed.primary = getPrimary(fields)
       computed.primaryKey = ext.primaryKey || _.isArray(primary) ? _.camelCase(primary.join('-')) : primary
+
+      // determine the type of the primary
+      let primarySample = _.isArray(primary) ? _.first(primary) : primary
+      let primaryDef = _.get(fields, `["${primarySample}"]`)
+      let primaryType = (_.isString(primaryDef) || _.isArray(primaryDef))
+        ? primaryDef
+        : _.has(primaryDef, 'type')
+          ? primaryDef.type
+          : 'String'
+      let primaryTypeName = _.isArray(primaryType)
+        ? _.first(primaryType)
+        : primaryType
+
+      _.set(fields, `["${computed.primaryKey}"].type`, _.isArray(primary) ? [primaryTypeName] : primaryTypeName)
 
       // get the uniques
       computed.uniques = computeUniques(fields)
@@ -704,6 +724,11 @@ export default class GraphQLFactoryBackendCompiler {
             foreign: _.isString(has) ? has : _.get(has, 'foreignKey', 'id'),
             many: _.isArray(type)
           })
+        }
+
+        // add field resolves for types with collections
+        if (_.has(this, `definition.types["${typeName}"]["${this.extension}"].collection`)) {
+          fieldDef.resolve = fieldDef.resolve || `backend_read${typeName}`
         }
       })
     })

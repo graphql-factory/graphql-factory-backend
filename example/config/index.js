@@ -28,6 +28,9 @@ export const config = {
         host: { type: 'String', uniqueWith: 'hostport' },
         port: { type: 'String', uniqueWith: 'hostport' },
         location: 'String'
+      },
+      _backend: {
+        collection: 'host'
       }
     },
     Person: {

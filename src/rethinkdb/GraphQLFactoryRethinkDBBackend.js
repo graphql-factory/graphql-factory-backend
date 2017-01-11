@@ -111,7 +111,8 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
           callback()
           return resolve()
         }
-        throw new Error('invalid rethinkdb driver type or state')
+        callback()
+        return resolve()
       } catch (error) {
         callback(error)
         reject(error)
@@ -127,9 +128,18 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
   make (callback) {
     return this._connectDatabase()
       .then(() => {
-        this._compile()
-        callback()
-      }, callback)
+        try {
+          this._compile()
+          callback(null, this)
+          return this
+        } catch (error) {
+          callback(error)
+        }
+      })
+      .catch((error) => {
+        callback(error)
+        return Promise.reject(error)
+      })
   }
 
   /*******************************************************************

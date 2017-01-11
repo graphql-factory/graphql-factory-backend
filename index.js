@@ -321,7 +321,7 @@ var GraphQLFactoryBackendCompiler = function () {
   }, {
     key: 'compile',
     value: function compile() {
-      return this.extendTemporal().compileDefinition().addInputTypes().computeExtension().buildRelations().buildQueries().buildMutations().buildSubscriptions().setListArgs().value();
+      return this.extendTemporal().compileDefinition().computeExtension().addInputTypes().buildRelations().buildQueries().buildMutations().buildSubscriptions().setListArgs().value();
     }
 
     /**
@@ -345,27 +345,28 @@ var GraphQLFactoryBackendCompiler = function () {
     value: function addInputTypes() {
       var _this = this;
 
-      var extendsType = this.backend.extendsType;
-      var getTypeComputed = this.backend.getTypeComputed;
+      var be = this.backend;
+      var types = this.definition.types;
 
-      _.forEach(this.definition.types, function (typeDef, typeName) {
+      _.forEach(types, function (typeDef, typeName) {
         var type = typeDef.type,
             fields = typeDef.fields;
 
-        var _ref = getTypeComputed(typeName) || {},
+        var _ref = be.getTypeComputed(typeName) || {},
             relations = _ref.relations,
+            collection = _ref.collection,
             primaryKey = _ref.primaryKey;
 
         var versioned = _this.isVersioned(typeDef);
 
+        // initialize the create and update input types
+        // both are created because update should require different fields
+        var create = { type: 'Input', fields: {} };
+        var update = { type: 'Input', fields: {} };
+        var remove = { type: 'Input', fields: {} };
+
         if (isObjectType(type)) {
           (function () {
-            // initialize the create and update input types
-            // both are created because update should require different fields
-            var create = { type: 'Input', fields: {} };
-            var update = { type: 'Input', fields: {} };
-            var remove = { type: 'Input', fields: {} };
-
             // get the computed belongsTo relations
             var belongsToRelations = _(_.get(relations, 'belongsTo')).map(function (val) {
               return _.keys(val);
@@ -412,19 +413,24 @@ var GraphQLFactoryBackendCompiler = function () {
                 }
 
                 // check for primitive that requires no extra processing
-                else if (isPrimitive(fieldTypeName) || extendsType(fieldTypeName, ['Input', 'Enum', 'Scalar']).length) {
+                else if (isPrimitive(fieldTypeName) || be.extendsType(fieldTypeName, ['Input', 'Enum', 'Scalar']).length) {
                     _.set(create, 'fields["' + fieldName + '"]', { type: type, nullable: nullable });
                     _.set(update, 'fields["' + fieldName + '"]', { type: type });
                   }
 
                   // check for valid extended types
-                  else if (extendsType(fieldTypeName, ['Object']).length) {
+                  else if (be.extendsType(fieldTypeName, ['Object']).length) {
                       // if the field is a relation, the type should be the fields foreign key
                       if (has) {
                         var relatedFk = _.get(has, 'foreignKey', has);
-                        var relatedDef = _.get(_this.definition.types, '["' + fieldName + '"].fields["' + relatedFk + '"]');
+                        var relatedFields = _.get(types, '["' + fieldTypeName + '"].fields');
+                        var relatedDef = _.get(relatedFields, relatedFk);
                         var relatedType = getTypeName(getType(makeFieldDef(relatedDef)));
 
+                        // if the related type cannot be resolved return
+                        if (!relatedType) return true;
+
+                        // otherwise set the create and update fields
                         _.set(create, 'fields["' + fieldName + '"]', {
                           type: isList ? [relatedType] : relatedType,
                           nullable: nullable
@@ -461,9 +467,9 @@ var GraphQLFactoryBackendCompiler = function () {
             }
 
             // add the types to the definition
-            _this.definition.types[makeInputName(typeName, CREATE)] = create;
-            _this.definition.types[makeInputName(typeName, UPDATE)] = update;
-            _this.definition.types[makeInputName(typeName, DELETE)] = remove;
+            if (!_.isEmpty(create.fields)) types[makeInputName(typeName, CREATE)] = create;
+            if (!_.isEmpty(update.fields)) types[makeInputName(typeName, UPDATE)] = update;
+            if (!_.isEmpty(remove.fields)) types[makeInputName(typeName, DELETE)] = remove;
           })();
         }
       });
@@ -592,7 +598,10 @@ var GraphQLFactoryBackendCompiler = function () {
         }
 
         var fields = _.get(definition, 'fields', {});
-        var ext = _.get(definition, '["' + _this3.extension + '"]', {});
+        var ext = _.get(definition, '["' + _this3.extension + '"]');
+
+        if (!_.isObject(fields) || !_.isObject(ext)) return true;
+
         var schema = ext.schema,
             table = ext.table,
             collection = ext.collection,
@@ -601,8 +610,6 @@ var GraphQLFactoryBackendCompiler = function () {
             mutation = ext.mutation,
             query = ext.query;
 
-
-        if (!_.isObject(fields) || !_.isObject(ext)) return true;
         var computed = ext.computed = {};
 
         computed.collection = '' + _this3.prefix + (collection || table);
@@ -615,6 +622,14 @@ var GraphQLFactoryBackendCompiler = function () {
         // get the primary key name
         var primary = computed.primary = getPrimary$1(fields);
         computed.primaryKey = ext.primaryKey || _.isArray(primary) ? _.camelCase(primary.join('-')) : primary;
+
+        // determine the type of the primary
+        var primarySample = _.isArray(primary) ? _.first(primary) : primary;
+        var primaryDef = _.get(fields, '["' + primarySample + '"]');
+        var primaryType = _.isString(primaryDef) || _.isArray(primaryDef) ? primaryDef : _.has(primaryDef, 'type') ? primaryDef.type : 'String';
+        var primaryTypeName = _.isArray(primaryType) ? _.first(primaryType) : primaryType;
+
+        _.set(fields, '["' + computed.primaryKey + '"].type', _.isArray(primary) ? [primaryTypeName] : primaryTypeName);
 
         // get the uniques
         computed.uniques = computeUniques(fields);
@@ -874,6 +889,11 @@ var GraphQLFactoryBackendCompiler = function () {
               foreign: _.isString(has) ? has : _.get(has, 'foreignKey', 'id'),
               many: _.isArray(type)
             });
+          }
+
+          // add field resolves for types with collections
+          if (_.has(_this7, 'definition.types["' + typeName + '"]["' + _this7.extension + '"].collection')) {
+            fieldDef.resolve = fieldDef.resolve || 'backend_read' + typeName;
           }
         });
       });
@@ -2723,7 +2743,8 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
               callback();
               return resolve();
             }
-          throw new Error('invalid rethinkdb driver type or state');
+          callback();
+          return resolve();
         } catch (error) {
           callback(error);
           reject(error);
@@ -2743,9 +2764,17 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
       var _this3 = this;
 
       return this._connectDatabase().then(function () {
-        _this3._compile();
-        callback();
-      }, callback);
+        try {
+          _this3._compile();
+          callback(null, _this3);
+          return _this3;
+        } catch (error) {
+          callback(error);
+        }
+      }).catch(function (error) {
+        callback(error);
+        return Promise.reject(error);
+      });
     }
 
     /*******************************************************************

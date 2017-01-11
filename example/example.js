@@ -10,8 +10,20 @@ let backend = new GraphQLFactoryRethinkDBBackend('List', graphql, factory, rethi
 
 backend.make((err) => {
   if (err) return console.error(err)
-  console.log(JSON.stringify(backend.lib._definitions.definition.types, null, '  '))
-  process.exit()
+  setTimeout(() => {
+    console.log(JSON.stringify(backend.lib._definitions.definition.types.backendDeleteCompoundInput, null, '  '))
+    // _.forEach(backend.lib._definitions.definition.types, (t, name) => console.log(name, t.fields))
+    /*
+    _.forEach(backend.lib._definitions.definition.types, (t, name) => {
+      _.forEach(t.fields, (f, fname) => {
+        _.forEach(f.args, (a, aname) => {
+          if (!a.type) console.log({ name, fname, aname })
+        })
+      })
+    })
+    */
+  }, 500)
+  setTimeout(process.exit, 2000)
 })
 
 // lib.List('mutation Mutation { deleteItem (id: "965a4c0c-2611-46a1-b57b-bd2cb3626458") }')
