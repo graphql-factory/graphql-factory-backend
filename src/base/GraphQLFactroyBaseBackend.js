@@ -14,7 +14,6 @@ import GraphQLFactoryBackendCompiler from './GraphQLFactoryBackendCompiler'
  * @extends Events
  */
 export default class GraphQLFactoryBaseBackend extends Events {
-
   /**
    * Initializes a backend instance
    * @param {String} namespace - namespace to using in globals

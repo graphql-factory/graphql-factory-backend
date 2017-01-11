@@ -1,12 +1,11 @@
 import _ from 'lodash'
-import Bluebird from 'bluebird'
 
-export function isPromise (obj) {
-  if (obj instanceof Promise || obj instanceof Bluebird) return true
-  if (_.isFunction(_.get(obj, 'then')) && _.isFunction(_.get(obj, 'catch'))) return true
-  return false
-}
-
+/**
+ * Gets a nested property from a reql object
+ * @param {Object} base - base reql object
+ * @param {String} pathStr - path string to the property
+ * @return {Object} - reql object
+ */
 export function reqlPath (base, pathStr) {
   _.forEach(_.toPath(pathStr), (p) => {
     base = base(p)
@@ -14,7 +13,15 @@ export function reqlPath (base, pathStr) {
   return base
 }
 
-// gets relationships defined in the type definition and also
+/**
+ * Gets nested relationships defined on the type and wether or not they are a many relationship
+ * @param {Object} backend - factory backend instance
+ * @param {String} type - graphql type name
+ * @param {Object} source - source from a field resolve
+ * @param {Object} info - info from a field resolve
+ * @param {Object} [filter] - starting filter
+ * @return {{filter: Object, many: Boolean}}
+ */
 export function getRelationFilter (backend, type, source, info, filter) {
   filter = filter || backend.getCollection(type)
 
@@ -81,7 +88,14 @@ export function getRelationFilter (backend, type, source, info, filter) {
   return { filter, many }
 }
 
-// creates a filter based on the arguments
+/**
+ * Creates a reql filter based on the arguments object
+ * @param {Object} backend - factory backend instance
+ * @param {String} type - graphql type name
+ * @param {Object} args - args from a field resolve
+ * @param {Object} [filter] - starting filter
+ * @return {Object} - reql filter
+ */
 export function getArgsFilter (backend, type, args, filter) {
   filter = filter || backend.getCollection(backend)
   let argKeys = _.keys(args)
@@ -99,6 +113,14 @@ export function getArgsFilter (backend, type, args, filter) {
 }
 
 // determines unique constraints and if any have been violated
+/**
+ * determines if any unique constraints will be violated by the args
+ * @param {Object} backend - factory backend instance
+ * @param {String} type - graphql type name
+ * @param {Object} args - args from a field resolve
+ * @param {Object} [filter] - starting filter
+ * @return {Object} - reql filter
+ */
 export function violatesUnique (backend, type, args, filter) {
   filter = filter || backend.getCollection(type)
   let { r } = backend
@@ -139,15 +161,16 @@ export function violatesUnique (backend, type, args, filter) {
       .count()
       .ne(0)
   }
-  return filter.coerceTo('array').do(() => r.expr(false))
+  return filter.coerceTo('ARRAY').do(() => r.expr(false))
 }
 
 /**
  * Validates that related ids exist
- * @param backend
- * @param type
- * @param args
- * @param filter
+ * @param {Object} backend - factory backend instance
+ * @param {String} type - graphql type name
+ * @param {Object} args - args from a field resolve
+ * @param {Object} [filter] - starting filter
+ * @return {Object} - reql filter
  */
 export function existsFilter (backend, type, args, filter) {
   let { r } = backend
@@ -165,18 +188,10 @@ export function existsFilter (backend, type, args, filter) {
     .reduce((prev, cur) => prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null)))
 }
 
-// get records that are not this one from a previous filter
-export function notThisRecord (backend, type, args, filter) {
-  filter = filter || backend.getCollection(backend)
-  let { primaryKey } = backend.getTypeComputed(type)
-  let id = backend.getPrimaryFromArgs(type, args)
-  return filter.filter((obj) => obj(primaryKey).ne(id))
-}
-
 export default {
+  reqlPath,
   existsFilter,
   getRelationFilter,
   getArgsFilter,
-  violatesUnique,
-  notThisRecord
+  violatesUnique
 }

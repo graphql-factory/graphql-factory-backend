@@ -1,5 +1,6 @@
 import _ from 'lodash'
 
+// constant values - should be centralized at some point
 export const CREATE = 'create'
 export const READ = 'read'
 export const UPDATE = 'update'
@@ -30,6 +31,34 @@ export const PRIMITIVES = [STRING, INT, FLOAT, BOOLEAN, ID]
  */
 function isBatchOperation (op) {
   return _.includes([BATCH_CREATE, BATCH_UPDATE, BATCH_DELETE], op)
+}
+
+/**
+ * Creates an input name
+ * @param {String} typeName - graphql type name
+ * @param {String} opName - batch operation name
+ * @return {string}
+ */
+function makeInputName (typeName, opName) {
+  switch (opName) {
+    case CREATE:
+      return `backendCreate${typeName}Input`
+    case BATCH_CREATE:
+      return `backendCreate${typeName}Input`
+
+    case UPDATE:
+      return `backendUpdate${typeName}Input`
+    case BATCH_UPDATE:
+      return `backendUpdate${typeName}Input`
+
+    case DELETE:
+      return `backendDelete${typeName}Input`
+    case BATCH_DELETE:
+      return `backendDelete${typeName}Input`
+
+    default:
+      return `${typeName}Input`
+  }
 }
 
 /**
@@ -117,6 +146,17 @@ function computeUniques (fields) {
 }
 
 /**
+ * Determines if the type is an object
+ * @param type
+ */
+function isObjectType (type) {
+  return !type
+    || type === 'Object'
+    || _.includes(type, 'Object')
+    || type.Object !== undefined
+}
+
+/**
  * GraphQL Factory Backend Compiler - updates the schema definition and generates resolvers
  * based on backend extension definition for each type
  */
@@ -153,7 +193,6 @@ export default class GraphQLFactoryBackendCompiler {
       .compileDefinition()
       .computeExtension()
       .buildRelations()
-      .setInputFields()
       .buildQueries()
       .buildMutations()
       .buildSubscriptions()
@@ -170,63 +209,130 @@ export default class GraphQLFactoryBackendCompiler {
   }
 
   /**
-   * TODO: change this to create individual types with a name like batchInputType
    * Adds input types for each object that has a collection backing it
    * @return {GraphQLFactoryBackendCompiler}
    */
   addInputTypes () {
-    _.forEach(this.definition.types, (definition) => {
-      let { type, fields } = definition
-      let { collection, table } = _.get(definition, `["${this.extension}"]`, {})
-      if (collection || table) {
-        if (!type) {
-          definition.type = ['Object', 'Input']
-        } else if (_.isArray(type)) {
-          if (!_.includes(type, 'Input')) type.push('Input')
-        } else if (_.isObject(type)) {
-          if (!_.has(type, 'Input')) type.Input = null
+    let extendsType = this.backend.extendsType
+    let getTypeComputed = this.backend.getTypeComputed
+
+    _.forEach(this.definition.types, (typeDef, typeName) => {
+      let { type, fields } = typeDef
+      let { relations, primaryKey } = getTypeComputed(typeName) || {}
+      let versioned = this.isVersioned(typeDef)
+
+      if (isObjectType(type)) {
+        // initialize the create and update input types
+        // both are created because update should require different fields
+        let create = { type: 'Input', fields: {} }
+        let update = { type: 'Input', fields: {} }
+        let remove = { type: 'Input', fields: {} }
+
+        // get the computed belongsTo relations
+        let belongsToRelations = _(_.get(relations, 'belongsTo'))
+          .map((val) => _.keys(val))
+          .flatten()
+          .value()
+
+        // analyze each field
+        _.forEach(fields, (fieldDef, fieldName) => {
+          let def = null
+
+          // get the fieldDef
+          if (_.isArray(fieldDef) || _.isString(fieldDef) || _.has(fieldDef, 'type')) {
+            def = makeFieldDef(fieldDef)
+          } else if (_.isObject(fieldDef) && _.isObject(fieldDef.Object)) {
+            def = makeFieldDef(fieldDef.Object)
+          } else {
+            return true
+          }
+
+          // get the type name and if it is a list
+          let { primary, nullable, has, belongsTo } = def
+          let type = getType(def)
+          let fieldTypeName = getTypeName(type)
+          let isList = _.isArray(type)
+
+          // determine if the field is nullable
+          nullable = _.isBoolean(nullable)
+            ? nullable
+            : _.isBoolean(primary)
+              ? !primary
+              : true
+
+          // check for primary key which is always required
+          if (fieldName === primaryKey) {
+            _.set(create, `fields["${fieldName}"]`, { type, nullable: false })
+            _.set(update, `fields["${fieldName}"]`, { type, nullable: false })
+            _.set(remove, `fields["${fieldName}"]`, { type, nullable: false })
+          }
+
+          // check for belongsTo which should not be included because it is a resolved field
+          // also ignore the temporal extension
+          else if (!has
+            && (belongsTo
+            || (this.isVersioned(typeDef) && fieldName === this.temporalExtension)
+            || _.includes(belongsToRelations, fieldName))) {
+            return true
+          }
+
+          // check for primitive that requires no extra processing
+          else if (isPrimitive(fieldTypeName)
+            || extendsType(fieldTypeName, ['Input', 'Enum', 'Scalar']).length) {
+            _.set(create, `fields["${fieldName}"]`, { type, nullable })
+            _.set(update, `fields["${fieldName}"]`, { type })
+          }
+
+          // check for valid extended types
+          else if (extendsType(fieldTypeName, ['Object']).length) {
+            // if the field is a relation, the type should be the field types primary key
+            if (has) {
+              let relatedPk = _.get(getTypeComputed(fieldTypeName), 'primaryKey')
+              let relatedDef = _.get(this.definition.types, `["${fieldName}"].fields["${relatedPk}"]`)
+              let relatedType = getTypeName(getType(makeFieldDef(relatedDef)))
+
+              _.set(create, `fields["${fieldName}"]`, {
+                type: isList ? [relatedType] : relatedType,
+                nullable
+              })
+              _.set(update, `fields["${fieldName}"]`, {
+                type: isList ? [relatedType] : relatedType
+              })
+            }
+
+            // other types should use the generated input type
+            else {
+              let createInputName = makeInputName(fieldTypeName, CREATE)
+              let updateInputName = makeInputName(fieldTypeName, UPDATE)
+
+              _.set(create, `fields["${fieldName}"]`, {
+                type: isList ? [createInputName] : createInputName,
+                nullable
+              })
+              _.set(update, `fields["${fieldName}"]`, {
+                type: isList ? [updateInputName] : updateInputName
+              })
+            }
+          }
+        })
+
+        // if versioned, add extra fields
+        if (versioned) {
+          create.fields = _.merge(create.fields, {
+            useCurrent: { type: 'Boolean', defaultValue: false }
+          })
+          update.fields = _.merge(update.fields, {
+            useCurrent: { type: 'Boolean' }
+          })
         }
+
+        // add the types to the definition
+        this.definition.types[makeInputName(typeName, CREATE)] = create
+        this.definition.types[makeInputName(typeName, UPDATE)] = update
+        this.definition.types[makeInputName(typeName, DELETE)] = remove
       }
     })
 
-    return this
-  }
-
-  /**
-   * TODO: in concert with the previous method, create new types
-   * Sets the correct input type for each field
-   * @returns {GraphQLFactoryBackendCompiler}
-   */
-  setInputFields () {
-    _.forEach(this.definition.types, (definition, name) => {
-      let { type, fields } = definition
-      if (type !== 'Input') return
-      let removes = []
-
-      _.forEach(fields, (fieldDef, fieldName) => {
-        // check for non conditional field definitions
-        if (_.isArray(fieldDef) || _.isString(fieldDef) || _.has(fieldDef, 'type')) {
-          let fieldType = getType(makeFieldDef(fieldDef))
-          let typeName = getTypeName(fieldType)
-          let isList = _.isArray(fieldType)
-
-          // check for primitives and objects that do not require an input type
-          if (_.has(fieldDef, 'belongsTo')) {
-            removes.push(fieldName)
-          } else if (!isPrimitive(typeName) && !this.backend.extendsType(typeName, ['Input', 'Enum', 'Scalar']).length) {
-            let relations = _.get(this.backend.getTypeComputed(typeName), 'relations')
-            let belongsTo = _(_.get(relations, 'belongsTo'))
-              .map((val) => _.keys(val))
-              .flatten()
-              .value()
-
-            if (_.includes(belongsTo, fieldName)) removes.push(fieldName)
-            else fieldDef.type = isList ? [`${typeName}Input`] : `${typeName}Input`
-          }
-        }
-      })
-      _.forEach(removes, (fName) => delete fields[fName])
-    })
     return this
   }
 
@@ -651,14 +757,27 @@ export default class GraphQLFactoryBackendCompiler {
    * @return {Object}
    */
   buildArgs (definition, operation, rootName, opName) {
-    let args = {}
     let fields = _.get(definition, 'fields', {})
-    let _backend = _.get(definition, `["${this.extension}"]`, {})
-    let primaryKey = _.get(_backend, 'computed.primaryKey', 'id')
+    // let primaryKey = _.get(this.backend.getTypeComputed(rootName), 'primaryKey', 'id')
+    let versioned = this.isVersioned(definition)
 
-    if (operation === MUTATION && _.includes([BATCH_DELETE, BATCH_UPDATE, BATCH_CREATE], opName)) {
+    // if the type is versioned create extra args
+    let versionQueryFields = versioned
+      ? {
+        id: { type: 'String' },
+        version: { type: 'String' },
+        recordId: { type: 'String' },
+        date: { type: 'TemporalDateTime' }
+      }
+      : {}
+
+    // check for batch operations and use the generated inputs
+    if (operation === MUTATION && isBatchOperation(opName)) {
       return {
-        batch: { type: [`${rootName}Input`], nullable: false }
+        batch: {
+          type: [makeInputName(rootName, opName)],
+          nullable: false
+        }
       }
     }
 
@@ -670,80 +789,43 @@ export default class GraphQLFactoryBackendCompiler {
       }
     }
 
-    if (operation === QUERY) args.limit = { type: 'Int' }
+    // if a query, copy a create without its nullables and add an overridable limit
+    if (operation === QUERY) {
+      let typeQueryInput = _.get(this.definition.types, `["${makeInputName(rootName, CREATE)}"].fields`)
+
+      return _.merge(
+        { limit: { type: 'Int' } },
+        _.mapValues(typeQueryInput, (def) => {
+          let { type } = def
+          return { type }
+        }),
+        versionQueryFields
+      )
+    }
+
+    // if a subscription, cope a create without its nullables and add a subscriber
     if (operation === SUBSCRIPTION && opName === SUBSCRIBE) {
-      args.subscriber = { type: 'String', nullable: false }
+      let typeSubInput = _.get(this.definition.types, `["${makeInputName(rootName, CREATE)}"].fields`)
+      return _.merge(
+        _.mapValues(typeSubInput, (def) => {
+          let { type } = def
+          return { type }
+        }),
+        { subscriber: { type: 'String', nullable: false } },
+        versionQueryFields
+      )
     }
 
-    _.forEach(fields, (fieldDef, fieldName) => {
-      let type = getType(fieldDef)
-      if (!type) return true
-      let typeName = getTypeName(type)
-      let typeDef = _.get(this.definition.types, `["${typeName}"]`, {})
-      let relations = _.get(typeDef, `${this.extension}.computed.relations`, {})
-      fieldDef = fields[fieldName] = makeFieldDef(fieldDef)
-      let nullable = (operation === MUTATION && opName === CREATE)
-        ? fieldDef.nullable
-        : (operation === MUTATION && fieldName === primaryKey)
-          ? false
-          : true
-
-      // support protected fields which get removed from the args build
-      if (fieldDef.protect === true && operation === MUTATION) return
-
-      // primitives get added automatically
-      if (isPrimitive(type)) {
-        args[fieldName] = { type, nullable }
-      } else {
-        let typeBackend = _.get(this.definition.types, `["${typeName}"]["${this.extension}"]`)
-
-        if (fieldDef.resolve !== false && operation === QUERY && typeBackend) {
-          fieldDef.resolve = fieldDef.resolve || `backend_read${type}`
-        } else {
-          // add args for related types
-          if (_.has(relations, `belongsTo["${rootName}"]["${fieldName}"]`)) {
-            args[fieldName]  = { type: 'String', nullable }
-          } else if (fieldDef.has) {
-            args[fieldName] = { type: _.isArray(fieldDef.type) ? ['String'] : 'String', nullable }
-          } else {
-            // look for an input type
-            if (typeDef.type !== ENUM) {
-              if (typeDef.type === INPUT || typeDef.type === SCALAR ) {
-                args[fieldName] = { type, nullable }
-              } else {
-                let inputName = `${typeName}${INPUT}`
-                let inputMatch = _.get(this.definition.types, `["${inputName}"]`, {})
-
-                if (inputMatch.type === INPUT || inputMatch.type === SCALAR) {
-                  args[fieldName] = { type: _.isArray(type) ? [inputName] : inputName, nullable }
-                } else {
-                  console.warn('[backend warning]: calculation of type "' + rootName + '" argument "' + fieldName +
-                    '" could not find an input type and will not be added. please create type "' + inputName + '"')
-                }
-              }
-            } else {
-              args[fieldName] = { type, nullable }
-            }
-          }
-        }
-      }
-    })
-
-    // check for versioned and set version specific args
-    if (this.isVersioned(definition)) {
-      delete args[this.temporalExtension]
-
-      if (operation === QUERY) {
-        args.id = { type: 'String' }
-        args.version = { type: 'String' }
-        args.recordId = { type: 'String' }
-        args.date = { type: 'TemporalDateTime' }
-      } else if (opName === CREATE) {
-        args.useCurrent = { type: 'Boolean', defaultValue: false }
-      } else if (opName === UPDATE) {
-        args.useCurrent = { type: 'Boolean' }
-      }
+    // check for mutation
+    if (operation === MUTATION) {
+      let typeMutationInput = _.get(this.definition.types, `["${makeInputName(rootName, opName)}"].fields`)
+      return _.mapValues(typeMutationInput, (def) => {
+        let { type } = def
+        return { type }
+      })
     }
-    return args
+
+    // this code should never be executed
+    throw new Error('invalid arg calculation request')
   }
 }

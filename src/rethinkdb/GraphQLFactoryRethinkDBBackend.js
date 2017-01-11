@@ -1,5 +1,4 @@
 import _ from 'lodash'
-import q from './common/q'
 import filter from './common/filter'
 import createResolver from './resolvers/create'
 import readResolver from './resolvers/read'
@@ -14,6 +13,31 @@ import GraphQLFactoryBaseBackend from '../base/GraphQLFactroyBaseBackend'
 
 // extended backend class for RethinkDB
 export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBackend {
+  /**
+   * Initializes a rethinkdb backend instance
+   * @param {String} namespace - namespace to using in globals
+   * @param {Object} graphql - instance of graphql
+   * @param {Object} factory - instance of graphql-factory
+   * @param {Object} config - configuration object
+   * @param {String} [config.name="GraphQLFactoryBackend"] - plugin name
+   * @param {String} [config.extension="_backend"] - plugin extension
+   * @param {Object} [config.options] - options hash
+   * @param {String} [config.options.store="test"] - default store name
+   * @param {String} [config.options.prefix=""] - prefix for collections
+   * @param {Object} [config.options.database] - database connection options
+   * @param {Array<String>|String} [config.plugin] - additional plugins to merge
+   * @param {String} [config.temporalExtension="_temporal"] - temporal plugin extension
+   * @param {Object} [config.globals] - Factory globals definition
+   * @param {Object} [config.fields] - Factory fields definition
+   * @param {Object} config.types - Factory types definition
+   * @param {Object} [config.schemas] - Factory schemas definition
+   * @param {Object} [config.functions] - Factory functions definition
+   * @param {Object} [config.externalTypes] - Factory externalTypes definition
+   * @param {Object} [config.installData] - Seed data
+   * @param {Object} r - rethinkdb driver
+   * @param {Object} [connection] - connection for rethinkdb driver
+   * @callback callback
+   */
   constructor (namespace, graphql, factory, r, config, connection) {
     super(namespace, graphql, factory, config)
 
@@ -29,7 +53,6 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
 
     // utils
     this.filter = filter
-    this.q = q(this)
 
     // subscription manager
     this.subscriptionManager = new SubscriptionManager(this)
@@ -41,6 +64,73 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
   /*******************************************************************
    * Helper methods
    *******************************************************************/
+  getStore (type) {
+    let { store } = this.getTypeComputed(type)
+    return this.r.db(store)
+  }
+
+  getCollection (type) {
+    let { store, collection } = this.getTypeComputed(type)
+    return this.r.db(store).table(collection)
+  }
+
+  initStore (type, rebuild, seedData) {
+    return initStore.call(this, type, rebuild, seedData)
+  }
+
+  /**
+   * Determines if the rethink driver has already been connected and connects it if not
+   * @callback callback
+   * @private
+   */
+  _connectDatabase (callback = () => true) {
+    return new Promise((resolve, reject) => {
+      try {
+        let options = _.get(this.options, 'database', {})
+        // determine if uninitialized rethinkdbdash
+        if (!_.isFunction(_.get(this.r, 'connect'))) {
+          this.r = this.r(options)
+          callback()
+          return resolve()
+        }
+
+        // check that r is not a connected rethinkdbdash instance and should be a rethinkdb driver
+        else if (!_.has(this.r, '_poolMaster')) {
+          // check for an open connection
+          if (_.get(this._connection, 'open') !== true) {
+            return this.r.connect(options, (error, connection) => {
+              if (error) {
+                callback(error)
+                return reject(error)
+              }
+              this._connection = connection
+              callback()
+              return resolve()
+            })
+          }
+          callback()
+          return resolve()
+        }
+        throw new Error('invalid rethinkdb driver type or state')
+      } catch (error) {
+        callback(error)
+        reject(error)
+      }
+    })
+  }
+
+  /**
+   * Overrides the make function to include a database connection check
+   * @param callback
+   * @return {Promise.<TResult>}
+   */
+  make (callback) {
+    return this._connectDatabase()
+      .then(() => {
+        this._compile()
+        callback()
+      }, callback)
+  }
 
   /*******************************************************************
    * Required methods
@@ -95,19 +185,5 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
 
   unsubscribeResolver () {
     return unsubscribeResolver(this)
-  }
-
-  getStore (type) {
-    let { store } = this.getTypeComputed(type)
-    return this.r.db(store)
-  }
-
-  getCollection (type) {
-    let { store, collection } = this.getTypeComputed(type)
-    return this.r.db(store).table(collection)
-  }
-
-  initStore (type, rebuild, seedData) {
-    return initStore.call(this, type, rebuild, seedData)
   }
 }
