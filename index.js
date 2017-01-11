@@ -321,7 +321,7 @@ var GraphQLFactoryBackendCompiler = function () {
   }, {
     key: 'compile',
     value: function compile() {
-      return this.extendTemporal().addInputTypes().compileDefinition().computeExtension().buildRelations().buildQueries().buildMutations().buildSubscriptions().setListArgs().value();
+      return this.extendTemporal().compileDefinition().addInputTypes().computeExtension().buildRelations().buildQueries().buildMutations().buildSubscriptions().setListArgs().value();
     }
 
     /**
@@ -419,10 +419,10 @@ var GraphQLFactoryBackendCompiler = function () {
 
                   // check for valid extended types
                   else if (extendsType(fieldTypeName, ['Object']).length) {
-                      // if the field is a relation, the type should be the field types primary key
+                      // if the field is a relation, the type should be the fields foreign key
                       if (has) {
-                        var relatedPk = _.get(getTypeComputed(fieldTypeName), 'primaryKey');
-                        var relatedDef = _.get(_this.definition.types, '["' + fieldName + '"].fields["' + relatedPk + '"]');
+                        var relatedFk = _.get(has, 'foreignKey', has);
+                        var relatedDef = _.get(_this.definition.types, '["' + fieldName + '"].fields["' + relatedFk + '"]');
                         var relatedType = getTypeName(getType(makeFieldDef(relatedDef)));
 
                         _.set(create, 'fields["' + fieldName + '"]', {

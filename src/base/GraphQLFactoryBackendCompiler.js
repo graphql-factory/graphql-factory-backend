@@ -189,8 +189,8 @@ export default class GraphQLFactoryBackendCompiler {
    */
   compile () {
     return this.extendTemporal()
-      .addInputTypes()
       .compileDefinition()
+      .addInputTypes()
       .computeExtension()
       .buildRelations()
       .buildQueries()
@@ -285,10 +285,10 @@ export default class GraphQLFactoryBackendCompiler {
 
           // check for valid extended types
           else if (extendsType(fieldTypeName, ['Object']).length) {
-            // if the field is a relation, the type should be the field types primary key
+            // if the field is a relation, the type should be the fields foreign key
             if (has) {
-              let relatedPk = _.get(getTypeComputed(fieldTypeName), 'primaryKey')
-              let relatedDef = _.get(this.definition.types, `["${fieldName}"].fields["${relatedPk}"]`)
+              let relatedFk = _.get(has, 'foreignKey', has)
+              let relatedDef = _.get(this.definition.types, `["${fieldName}"].fields["${relatedFk}"]`)
               let relatedType = getTypeName(getType(makeFieldDef(relatedDef)))
 
               _.set(create, `fields["${fieldName}"]`, {
