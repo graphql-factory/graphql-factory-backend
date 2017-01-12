@@ -1760,12 +1760,11 @@ function violatesUnique(backend, type, args, filter) {
  * @param {Object} [filter] - starting filter
  * @return {Object} - reql filter
  */
-function existsFilter(backend, type, args, filter) {
+function existsFilter(backend, type, args) {
   var r = backend.r;
 
-  filter = filter || backend.getCollection(type);
-
   // reduce the related values to a flat array
+
   var exists = _(args).map(function (arg) {
     return backend.getRelatedValues(type, arg);
   }).flatten().reduce(function (result, value) {
@@ -1882,7 +1881,7 @@ function create(backend, type) {
         // handle standard create
         else {
             // generate a create query with checks
-            create = violatesUnique(backend, type, args, collection).branch(r.error('unique field violation'), existsFilter(backend, type, args, collection).not().branch(r.error('one or more related records were not found'), collection.insert(args, { returnChanges: true }).pluck('errors', 'first_error', 'changes').do(function (summary) {
+            create = violatesUnique(backend, type, args, collection).branch(r.error('unique field violation'), existsFilter(backend, type, args).not().branch(r.error('one or more related records were not found'), collection.insert(args, { returnChanges: true }).do(function (summary) {
               return summary('errors').ne(0).branch(r.error(summary('first_error')), summary('changes')('new_val').coerceTo('ARRAY').do(function (results) {
                 return r.expr(batchMode).branch(results, results.nth(0));
               }));
@@ -2118,9 +2117,9 @@ var _updateResolver = function (backend, type) {
             });
 
             // generate an update query with checks
-            update = violatesUnique(backend, type, args, notThese).branch(r.error('unique field violation'), existsFilter(backend, type, args, collection).not().branch(r.error('one or more related records were not found'), r.expr(args).forEach(function (arg) {
+            update = violatesUnique(backend, type, args, notThese).branch(r.error('unique field violation'), existsFilter(backend, type, args).not().branch(r.error('one or more related records were not found'), r.expr(args).forEach(function (arg) {
               return collection.get(arg(primaryKey)).eq(null).branch(r.error(type + ' with id ' + arg(primaryKey) + ' was not found, and could not be updated'), collection.get(arg(primaryKey)).update(arg, { returnChanges: true }));
-            }).pluck('errors', 'first_error').do(function (summary) {
+            }).do(function (summary) {
               return summary('errors').ne(0).branch(r.error(summary('first_error')), collection.filter(function (f) {
                 return r.expr(ids).contains(f(primaryKey));
               }).coerceTo('ARRAY').do(function (results) {
@@ -2242,7 +2241,7 @@ function del(backend, type) {
         else {
             del = r.expr(ids).forEach(function (id) {
               return collection.get(id).eq(null).branch(r.error(type + ' with id ' + id + ' was not found and cannot be deleted'), collection.get(id).delete({ returnChanges: true }));
-            }).pluck('errors', 'first_error', 'deleted').do(function (summary) {
+            }).do(function (summary) {
               return summary('errors').ne(0).branch(r.error(summary('first_error')), summary('deleted'));
             });
           }

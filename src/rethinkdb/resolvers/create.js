@@ -96,12 +96,11 @@ export default function create (backend, type, batchMode = false) {
           create = violatesUnique(backend, type, args, collection)
             .branch(
               r.error('unique field violation'),
-              existsFilter(backend, type, args, collection)
+              existsFilter(backend, type, args)
                 .not()
                 .branch(
                   r.error('one or more related records were not found'),
                   collection.insert(args, { returnChanges: true })
-                    .pluck('errors', 'first_error', 'changes')
                     .do((summary) => {
                       return summary('errors').ne(0).branch(
                         r.error(summary('first_error')),

@@ -109,7 +109,7 @@ export default function (backend, type, batchMode = false) {
           update = violatesUnique(backend, type, args, notThese)
             .branch(
               r.error('unique field violation'),
-              existsFilter(backend, type, args, collection)
+              existsFilter(backend, type, args)
                 .not()
                 .branch(
                   r.error('one or more related records were not found'),
@@ -119,7 +119,6 @@ export default function (backend, type, batchMode = false) {
                       collection.get(arg(primaryKey)).update(arg, { returnChanges: true })
                     )
                   })
-                    .pluck('errors', 'first_error')
                     .do((summary) => {
                       return summary('errors').ne(0).branch(
                         r.error(summary('first_error')),

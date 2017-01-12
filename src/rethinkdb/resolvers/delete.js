@@ -104,7 +104,6 @@ export default function del (backend, type, batchMode = false) {
               collection.get(id).delete({ returnChanges: true })
             )
           })
-            .pluck('errors', 'first_error', 'deleted')
             .do((summary) => {
               return summary('errors').ne(0).branch(
                 r.error(summary('first_error')),

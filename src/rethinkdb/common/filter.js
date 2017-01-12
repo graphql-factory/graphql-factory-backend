@@ -173,9 +173,8 @@ export function violatesUnique (backend, type, args, filter) {
  * @param {Object} [filter] - starting filter
  * @return {Object} - reql filter
  */
-export function existsFilter (backend, type, args, filter) {
+export function existsFilter (backend, type, args) {
   let { r } = backend
-  filter = filter || backend.getCollection(type)
 
   // reduce the related values to a flat array
   let exists = _(args).map((arg) => backend.getRelatedValues(type, arg)).flatten()
