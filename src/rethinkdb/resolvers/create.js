@@ -109,7 +109,7 @@ export default function create (backend, type, batchMode = false) {
                           .do((results) => {
                             return r.expr(batchMode).branch(
                               results,
-                              results.nth(0)
+                              results.nth(0).default(null)
                             )
                           })
                       )
