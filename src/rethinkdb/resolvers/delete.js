@@ -19,11 +19,9 @@ export default function del (backend, type, batchMode = false) {
 
     // standard details
     let { r, _connection, definition } = backend
-    let { before, after, timeout, primaryKey } = backend.getTypeInfo(type, info)
+    let { before, after, error, timeout, primaryKey } = backend.getTypeInfo(type, info)
     let collection = backend.getCollection(type)
     let fnPath = `backend_${batchMode ? 'batchD' : 'd'}elete${type}`
-    let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-    let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
 
     // ensure that the args are an array
     args = batchMode
@@ -32,23 +30,37 @@ export default function del (backend, type, batchMode = false) {
 
     // create a new promise
     return new Promise((resolve, reject) => {
-      return beforeHook.call(this, {
-        source,
-        args: batchMode ? args : _.first(args),
-        context,
-        info
-      }, backend, (error) => {
-        if (error) return reject(error)
+      let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
+      let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
+      let errorHook = _.get(error, fnPath, (err, args, backend, done) => reject(err))
+      let hookArgs = { source, args: batchMode ? args : _.first(args), context, info }
+
+      return beforeHook.call(this, hookArgs, backend, (error) => {
+        if (error) return errorHook(error, hookArgs, backend, reject)
 
         // pull the ids from the args
         let del = null
         let ids = _.map(_.filter(args, primaryKey), primaryKey)
-        if (ids.length !== args.length) return reject(`missing primaryKey "${primaryKey}" in update argument`)
+        if (ids.length !== args.length) {
+          return errorHook(
+            new Error(`missing primaryKey "${primaryKey}" in update argument`),
+            hookArgs,
+            backend,
+            reject
+          )
+        }
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
           // check that temporal update is allowed
-          if (temporalDef.delete === false) return reject(new Error('delete is not allowed on this temporal type'))
+          if (temporalDef.delete === false) {
+            return errorHook(
+              new Error('delete is not allowed on this temporal type'),
+              hookArgs,
+              backend,
+              reject
+            )
+          }
 
           // if a function was specified, use it
           if (_.isFunction(temporalDef.delete)) {
@@ -59,7 +71,12 @@ export default function del (backend, type, batchMode = false) {
           else if (_.isString(temporalDef.delete)) {
             let temporalDelete = _.get(definition, `functions["${temporalDef.delete}"]`)
             if (!_.isFunction(temporalDelete)) {
-              return reject(new Error(`cannot find function "${temporalDef.delete}"`))
+              return errorHook(
+                new Error(`cannot find function "${temporalDef.delete}"`),
+                hookArgs,
+                backend,
+                reject
+              )
             }
             return resolve(temporalDelete.call(this, source, args, context, info))
           }
@@ -68,7 +85,12 @@ export default function del (backend, type, batchMode = false) {
           else {
             let versionDelete = _.get(this, `globals["${temporalExt}"].temporalDelete`)
             if (!_.isFunction(versionDelete)) {
-              return reject(new Error(`could not find "temporalDelete" in globals`))
+              return errorHook(
+                new Error(`could not find "temporalDelete" in globals`),
+                hookArgs,
+                backend,
+                reject
+              )
             }
             del = versionDelete(type, args)
           }
@@ -94,12 +116,14 @@ export default function del (backend, type, batchMode = false) {
         // run the query
         del.run(_connection)
           .then((result) => {
-            return afterHook.call(this, result, batchMode ? args : _.first(args), backend, (error, result) => {
-              if (error) return reject(error)
+            return afterHook.call(this, result, hookArgs, backend, (error, result) => {
+              if (error) return errorHook(error, hookArgs, backend, reject)
               return resolve(result)
             })
           })
-          .catch(reject)
+          .catch((error) => {
+            return errorHook(error, hookArgs, backend, reject)
+          })
       })
     })
       .timeout(timeout || 10000)

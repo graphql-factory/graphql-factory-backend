@@ -257,7 +257,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
 
   getTypeInfo (type, info) {
     let typeDef = this.getTypeDefinition(type)
-    let { primary, primaryKey, collection, store, before, after, timeout } = this.getTypeComputed(type)
+    let { primary, primaryKey, collection, store, before, after, error, timeout } = this.getTypeComputed(type)
     let nested = this.isNested(info)
     let currentPath = this.getCurrentPath(info)
     let { belongsTo, has } = this.getRelations(type, info)
@@ -265,6 +265,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
       [this._extension]: typeDef[this._extension],
       before,
       after,
+      error,
       timeout,
       collection,
       store,

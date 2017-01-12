@@ -114,7 +114,6 @@ export function getArgsFilter (backend, type, args, filter) {
 
 // determines unique constraints and if any have been violated
 /**
- * TODO: not throwing errors on batch unique violations
  * determines if any unique constraints will be violated by the args
  * @param {Object} backend - factory backend instance
  * @param {String} type - graphql type name
@@ -142,9 +141,9 @@ export function violatesUnique (backend, type, args, filter) {
   if (unique.length) {
     return filter.filter((obj) => {
       return r.expr(unique)
-        .prepend(true)
+        .prepend(false)
         .reduce((prevArg, arg) => {
-          return prevArg.and(
+          return prevArg.or(
             arg.prepend(true)
               .reduce((prevUniq, uniq) => {
                 return prevUniq.and(

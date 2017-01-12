@@ -515,7 +515,7 @@ export default class GraphQLFactoryBackendCompiler {
         _.set(this.definition.schemas, `["${schema}"].query`, objName)
 
         _.forEach(query, (opDef, opName) => {
-          let { type, args, resolve, before, after } = opDef
+          let { type, args, resolve, before, after, error } = opDef
           let fieldName = opName === READ ? `${opName}${typeName}` : opName
           let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
 
@@ -534,6 +534,7 @@ export default class GraphQLFactoryBackendCompiler {
           // check for before and after hooks
           if (_.isFunction(before)) _.set(_backend, `computed.before["${resolveName}"]`, before)
           if (_.isFunction(after)) _.set(_backend, `computed.after["${resolveName}"]`, after)
+          if (_.isFunction(error)) _.set(_backend, `computed.error["${resolveName}"]`, error)
         })
       })
     })
@@ -586,7 +587,7 @@ export default class GraphQLFactoryBackendCompiler {
         _.set(this.definition.schemas, `["${schema}"].mutation`, objName)
 
         _.forEach(mutation, (opDef, opName) => {
-          let { type, args, resolve, before, after } = opDef
+          let { type, args, resolve, before, after, error } = opDef
           let ops = [CREATE, UPDATE, DELETE, BATCH_CREATE, BATCH_UPDATE, BATCH_DELETE]
           let fieldName = _.includes(ops, opName) ? `${opName}${typeName}` : opName
           let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
@@ -610,9 +611,10 @@ export default class GraphQLFactoryBackendCompiler {
             _.set(this.definition, `functions.${resolveName}`, resolve)
           }
 
-          // check for before and after hooks
+          // check for hooks
           if (_.isFunction(before)) _.set(_backend, `computed.before["${resolveName}"]`, before)
           if (_.isFunction(after)) _.set(_backend, `computed.after["${resolveName}"]`, after)
+          if (_.isFunction(error)) _.set(_backend, `computed.error["${resolveName}"]`, error)
         })
       })
     })
@@ -651,7 +653,7 @@ export default class GraphQLFactoryBackendCompiler {
         _.set(this.definition.schemas, `["${schema}"].subscription`, objName)
 
         _.forEach(subscription, (opDef, opName) => {
-          let { type, args, resolve, before, after } = opDef
+          let { type, args, resolve, before, after, error } = opDef
           let ops = [SUBSCRIBE, UNSUBSCRIBE]
           let fieldName = _.includes(ops, opName) ? `${opName}${typeName}` : opName
           let resolveName = _.isString(resolve) ? resolve : `backend_${fieldName}`
@@ -676,6 +678,7 @@ export default class GraphQLFactoryBackendCompiler {
           // check for before and after hooks
           if (_.isFunction(before)) _.set(_backend, `computed.before["${resolveName}"]`, before)
           if (_.isFunction(after)) _.set(_backend, `computed.after["${resolveName}"]`, after)
+          if (_.isFunction(error)) _.set(_backend, `computed.error["${resolveName}"]`, error)
         })
       })
     })

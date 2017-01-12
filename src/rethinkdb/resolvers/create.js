@@ -20,11 +20,9 @@ export default function create (backend, type, batchMode = false) {
 
     // standard details
     let { r, _connection, definition } = backend
-    let { before, after, timeout, primaryKey } = backend.getTypeInfo(type, info)
+    let { before, after, error, timeout, primaryKey } = backend.getTypeInfo(type, info)
     let collection = backend.getCollection(type)
     let fnPath = `backend_${batchMode ? 'batchC' : 'c'}reate${type}`
-    let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-    let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
 
     // ensure that the args are an array
     args = batchMode
@@ -34,21 +32,27 @@ export default function create (backend, type, batchMode = false) {
 
     // create new promise
     return new Promise((resolve, reject) => {
+      let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
+      let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
+      let errorHook = _.get(error, fnPath, (err, args, backend, done) => reject(err))
+      let hookArgs = { source, args: batchMode ? args : _.first(args), context, info }
       let create = null
 
       // run before hook
-      return beforeHook.call(this, {
-        source,
-        args: batchMode ? args : _.first(args),
-        context,
-        info
-      }, backend, (error) => {
-        if (error) return reject(error)
+      return beforeHook.call(this, hookArgs, backend, (error) => {
+        if (error) return errorHook(error, hookArgs, backend, reject)
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
           // check that temporal create is allowed
-          if (temporalDef.create === false) return reject(new Error('create is not allowed on this temporal type'))
+          if (temporalDef.create === false) {
+            return errorHook(
+              new Error('create is not allowed on this temporal type'),
+              hookArgs,
+              backend,
+              reject
+            )
+          }
 
           // if a function was specified, use it
           if (_.isFunction(temporalDef.create)) {
@@ -59,7 +63,12 @@ export default function create (backend, type, batchMode = false) {
           else if (_.isString(temporalDef.create)) {
             let temporalCreate = _.get(definition, `functions["${temporalDef.create}"]`)
             if (!_.isFunction(temporalCreate)) {
-              return reject(new Error(`cannot find function "${temporalDef.create}"`))
+              return errorHook(
+                new Error(`cannot find function "${temporalDef.create}"`),
+                hookArgs,
+                backend,
+                reject
+              )
             }
             return resolve(temporalCreate.call(this, source, args, context, info))
           }
@@ -68,7 +77,12 @@ export default function create (backend, type, batchMode = false) {
           else {
             let versionCreate = _.get(this, `globals["${temporalExt}"].temporalCreate`)
             if (!_.isFunction(versionCreate)) {
-              return reject(new Error(`could not find "temporalCreate" in globals`))
+              return errorHook(
+                new Error(`could not find "temporalCreate" in globals`),
+                hookArgs,
+                backend,
+                reject
+              )
             }
             create = batchMode
               ? versionCreate(type, args).coerceTo('ARRAY')
@@ -108,13 +122,13 @@ export default function create (backend, type, batchMode = false) {
         // run the query
         return create.run(_connection)
           .then((result) => {
-            return afterHook.call(this, result, batchMode ? args : _.first(args), backend, (error, result) => {
-              if (error) return reject(error)
+            return afterHook.call(this, result, hookArgs, backend, (error, result) => {
+              if (error) return errorHook(error, hookArgs, backend, reject)
               return resolve(result)
             })
           })
           .catch((error) => {
-            return reject(error.msg ? new Error(error.msg) : error)
+            return errorHook(error, hookArgs, backend, reject)
           })
       })
     })

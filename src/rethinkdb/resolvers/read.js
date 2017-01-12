@@ -12,7 +12,7 @@ export default function read (backend, type) {
     let isVersioned = Boolean(versioned) && definition.hasPlugin('GraphQLFactoryTemporal')
 
     // type details
-    let { before, after, timeout, nested } = backend.getTypeInfo(type, info)
+    let { before, after, error, timeout, nested } = backend.getTypeInfo(type, info)
     let temporalMostCurrent = _.get(this, `globals["${_temporalExtension}"].temporalMostCurrent`)
     let collection = backend.getCollection(type)
 
@@ -23,23 +23,38 @@ export default function read (backend, type) {
 
     let { filter, many } = getRelationFilter.call(this, backend, type, source, info, collection)
     let fnPath = `backend_read${type}`
-    let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-    let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
 
     // handle basic read
     return new Promise((resolve, reject) => {
-      return beforeHook.call(this, { source, args, context, info }, backend, (err) => {
-        if (err) return reject(asError(err))
+      let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
+      let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
+      let errorHook = _.get(error, fnPath, (err, args, backend, done) => reject(err))
+      let hookArgs = { source, args: batchMode ? args : _.first(args), context, info }
+
+      return beforeHook.call(this, hookArgs, backend, (error) => {
+        if (error) return errorHook(error, hookArgs, backend, reject)
 
         // handle temporal plugin
         if (isVersioned && !nested) {
-          if (temporalDef.read === false) return reject(new Error('read is not allowed on this temporal type'))
+          if (temporalDef.read === false) {
+            return errorHook(
+              new Error('read is not allowed on this temporal type'),
+              hookArgs,
+              backend,
+              reject
+            )
+          }
           if (_.isFunction(temporalDef.read)) {
             return resolve(temporalDef.read.call(this, source, args, context, info))
           } else if (_.isString(temporalDef.read)) {
             let temporalRead = _.get(definition, `functions["${temporalDef.read}"]`)
             if (!_.isFunction(temporalRead)) {
-              return reject(new Error(`cannot find function "${temporalDef.read}"`))
+              return errorHook(
+                new Error(`cannot find function "${temporalDef.read}"`),
+                hookArgs,
+                backend,
+                reject
+              )
             }
             return resolve(temporalRead.call(this, source, args, context, info))
           } else {
@@ -48,7 +63,12 @@ export default function read (backend, type) {
             } else {
               let versionFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
               if (!_.isFunction(versionFilter)) {
-                return reject(new Error(`could not find "temporalFilter" in globals`))
+                return errorHook(
+                  new Error(`could not find "temporalFilter" in globals`),
+                  hookArgs,
+                  backend,
+                  reject
+                )
               }
               filter = versionFilter(type, args)
               args = _.omit(args, ['version', 'recordId', 'date', 'id'])
@@ -70,13 +90,13 @@ export default function read (backend, type) {
 
         return filter.run(connection)
           .then((result) => {
-            return afterHook.call(this, result, args, backend, (err, result) => {
-              if (err) return reject(asError(err))
+            return afterHook.call(this, result, hookArgs, backend, (error, result) => {
+              if (error) return errorHook(error, hookArgs, backend, reject)
               return resolve(result)
             })
           })
-          .catch((err) => {
-            return reject(asError(err))
+          .catch((error) => {
+            return errorHook(error, hookArgs, backend, reject)
           })
       })
     })

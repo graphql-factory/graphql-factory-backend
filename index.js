@@ -675,7 +675,8 @@ var GraphQLFactoryBackendCompiler = function () {
                 args = opDef.args,
                 resolve = opDef.resolve,
                 before = opDef.before,
-                after = opDef.after;
+                after = opDef.after,
+                error = opDef.error;
 
             var fieldName = opName === READ ? '' + opName + typeName : opName;
             var resolveName = _.isString(resolve) ? resolve : 'backend_' + fieldName;
@@ -695,6 +696,7 @@ var GraphQLFactoryBackendCompiler = function () {
             // check for before and after hooks
             if (_.isFunction(before)) _.set(_backend, 'computed.before["' + resolveName + '"]', before);
             if (_.isFunction(after)) _.set(_backend, 'computed.after["' + resolveName + '"]', after);
+            if (_.isFunction(error)) _.set(_backend, 'computed.error["' + resolveName + '"]', error);
           });
         });
       });
@@ -746,7 +748,8 @@ var GraphQLFactoryBackendCompiler = function () {
                 args = opDef.args,
                 resolve = opDef.resolve,
                 before = opDef.before,
-                after = opDef.after;
+                after = opDef.after,
+                error = opDef.error;
 
             var ops = [CREATE, UPDATE, DELETE, BATCH_CREATE, BATCH_UPDATE, BATCH_DELETE];
             var fieldName = _.includes(ops, opName) ? '' + opName + typeName : opName;
@@ -765,9 +768,10 @@ var GraphQLFactoryBackendCompiler = function () {
               _.set(_this5.definition, 'functions.' + resolveName, resolve);
             }
 
-            // check for before and after hooks
+            // check for hooks
             if (_.isFunction(before)) _.set(_backend, 'computed.before["' + resolveName + '"]', before);
             if (_.isFunction(after)) _.set(_backend, 'computed.after["' + resolveName + '"]', after);
+            if (_.isFunction(error)) _.set(_backend, 'computed.error["' + resolveName + '"]', error);
           });
         });
       });
@@ -811,7 +815,8 @@ var GraphQLFactoryBackendCompiler = function () {
                 args = opDef.args,
                 resolve = opDef.resolve,
                 before = opDef.before,
-                after = opDef.after;
+                after = opDef.after,
+                error = opDef.error;
 
             var ops = [SUBSCRIBE, UNSUBSCRIBE];
             var fieldName = _.includes(ops, opName) ? '' + opName + typeName : opName;
@@ -833,6 +838,7 @@ var GraphQLFactoryBackendCompiler = function () {
             // check for before and after hooks
             if (_.isFunction(before)) _.set(_backend, 'computed.before["' + resolveName + '"]', before);
             if (_.isFunction(after)) _.set(_backend, 'computed.after["' + resolveName + '"]', after);
+            if (_.isFunction(error)) _.set(_backend, 'computed.error["' + resolveName + '"]', error);
           });
         });
       });
@@ -1367,6 +1373,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
           store = _getTypeComputed2.store,
           before = _getTypeComputed2.before,
           after = _getTypeComputed2.after,
+          error = _getTypeComputed2.error,
           timeout = _getTypeComputed2.timeout;
 
       var nested = this.isNested(info);
@@ -1376,7 +1383,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
           belongsTo = _getRelations.belongsTo,
           has = _getRelations.has;
 
-      return _ref2 = {}, defineProperty(_ref2, this._extension, typeDef[this._extension]), defineProperty(_ref2, 'before', before), defineProperty(_ref2, 'after', after), defineProperty(_ref2, 'timeout', timeout), defineProperty(_ref2, 'collection', collection), defineProperty(_ref2, 'store', store), defineProperty(_ref2, 'fields', typeDef.fields), defineProperty(_ref2, 'primary', primary), defineProperty(_ref2, 'primaryKey', primaryKey), defineProperty(_ref2, 'nested', nested), defineProperty(_ref2, 'currentPath', currentPath), defineProperty(_ref2, 'belongsTo', belongsTo), defineProperty(_ref2, 'has', has), _ref2;
+      return _ref2 = {}, defineProperty(_ref2, this._extension, typeDef[this._extension]), defineProperty(_ref2, 'before', before), defineProperty(_ref2, 'after', after), defineProperty(_ref2, 'error', error), defineProperty(_ref2, 'timeout', timeout), defineProperty(_ref2, 'collection', collection), defineProperty(_ref2, 'store', store), defineProperty(_ref2, 'fields', typeDef.fields), defineProperty(_ref2, 'primary', primary), defineProperty(_ref2, 'primaryKey', primaryKey), defineProperty(_ref2, 'nested', nested), defineProperty(_ref2, 'currentPath', currentPath), defineProperty(_ref2, 'belongsTo', belongsTo), defineProperty(_ref2, 'has', has), _ref2;
     }
   }, {
     key: 'getRequestFields',
@@ -1731,8 +1738,8 @@ function violatesUnique(backend, type, args, filter) {
 
   if (unique.length) {
     return filter.filter(function (obj) {
-      return r.expr(unique).prepend(true).reduce(function (prevArg, arg) {
-        return prevArg.and(arg.prepend(true).reduce(function (prevUniq, uniq) {
+      return r.expr(unique).prepend(false).reduce(function (prevArg, arg) {
+        return prevArg.or(arg.prepend(true).reduce(function (prevUniq, uniq) {
           return prevUniq.and(uniq.prepend(true).reduce(function (prevField, field) {
             return prevField.and(field('type').eq('String').branch(obj(field('field')).match(r.add('(?i)^', field('value'), '$')), obj(field('field')).eq(field('value'))));
           }));
@@ -1813,38 +1820,40 @@ function create(backend, type) {
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         before = _backend$getTypeInfo.before,
         after = _backend$getTypeInfo.after,
+        error = _backend$getTypeInfo.error,
         timeout = _backend$getTypeInfo.timeout,
         primaryKey = _backend$getTypeInfo.primaryKey;
 
     var collection = backend.getCollection(type);
     var fnPath = 'backend_' + (batchMode ? 'batchC' : 'c') + 'reate' + type;
-    var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-      return done();
-    });
-    var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-      return done(null, result);
-    });
 
     // ensure that the args are an array
     args = batchMode ? args.batch : [args];
 
     // create new promise
     return new Promise$1(function (resolve, reject) {
+      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+        return done();
+      });
+      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+        return done(null, result);
+      });
+      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
+        return reject(err);
+      });
+      var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
       var create = null;
 
       // run before hook
-      return beforeHook.call(_this, {
-        source: source,
-        args: batchMode ? args : _.first(args),
-        context: context,
-        info: info
-      }, backend, function (error) {
-        if (error) return reject(error);
+      return beforeHook.call(_this, hookArgs, backend, function (error) {
+        if (error) return errorHook(error, hookArgs, backend, reject);
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
           // check that temporal create is allowed
-          if (temporalDef.create === false) return reject(new Error('create is not allowed on this temporal type'));
+          if (temporalDef.create === false) {
+            return errorHook(new Error('create is not allowed on this temporal type'), hookArgs, backend, reject);
+          }
 
           // if a function was specified, use it
           if (_.isFunction(temporalDef.create)) {
@@ -1855,7 +1864,7 @@ function create(backend, type) {
           else if (_.isString(temporalDef.create)) {
               var temporalCreate = _.get(definition, 'functions["' + temporalDef.create + '"]');
               if (!_.isFunction(temporalCreate)) {
-                return reject(new Error('cannot find function "' + temporalDef.create + '"'));
+                return errorHook(new Error('cannot find function "' + temporalDef.create + '"'), hookArgs, backend, reject);
               }
               return resolve(temporalCreate.call(_this, source, args, context, info));
             }
@@ -1864,7 +1873,7 @@ function create(backend, type) {
             else {
                 var versionCreate = _.get(_this, 'globals["' + temporalExt + '"].temporalCreate');
                 if (!_.isFunction(versionCreate)) {
-                  return reject(new Error('could not find "temporalCreate" in globals'));
+                  return errorHook(new Error('could not find "temporalCreate" in globals'), hookArgs, backend, reject);
                 }
                 create = batchMode ? versionCreate(type, args).coerceTo('ARRAY') : versionCreate(type, args).coerceTo('ARRAY').nth(0);
               }
@@ -1882,12 +1891,12 @@ function create(backend, type) {
 
         // run the query
         return create.run(_connection).then(function (result) {
-          return afterHook.call(_this, result, batchMode ? args : _.first(args), backend, function (error, result) {
-            if (error) return reject(error);
+          return afterHook.call(_this, result, hookArgs, backend, function (error, result) {
+            if (error) return errorHook(error, hookArgs, backend, reject);
             return resolve(result);
           });
         }).catch(function (error) {
-          return reject(error.msg ? new Error(error.msg) : error);
+          return errorHook(error, hookArgs, backend, reject);
         });
       });
     }).timeout(timeout || 10000);
@@ -1919,6 +1928,7 @@ function read(backend, type) {
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         before = _backend$getTypeInfo.before,
         after = _backend$getTypeInfo.after,
+        error = _backend$getTypeInfo.error,
         timeout = _backend$getTypeInfo.timeout,
         nested = _backend$getTypeInfo.nested;
 
@@ -1935,27 +1945,34 @@ function read(backend, type) {
         many = _getRelationFilter$ca.many;
 
     var fnPath = 'backend_read' + type;
-    var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-      return done();
-    });
-    var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-      return done(null, result);
-    });
 
     // handle basic read
     return new Promise$1(function (resolve, reject) {
-      return beforeHook.call(_this, { source: source, args: args, context: context, info: info }, backend, function (err) {
-        if (err) return reject(asError(err));
+      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+        return done();
+      });
+      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+        return done(null, result);
+      });
+      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
+        return reject(err);
+      });
+      var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
+
+      return beforeHook.call(_this, hookArgs, backend, function (error) {
+        if (error) return errorHook(error, hookArgs, backend, reject);
 
         // handle temporal plugin
         if (isVersioned && !nested) {
-          if (temporalDef.read === false) return reject(new Error('read is not allowed on this temporal type'));
+          if (temporalDef.read === false) {
+            return errorHook(new Error('read is not allowed on this temporal type'), hookArgs, backend, reject);
+          }
           if (_.isFunction(temporalDef.read)) {
             return resolve(temporalDef.read.call(_this, source, args, context, info));
           } else if (_.isString(temporalDef.read)) {
             var temporalRead = _.get(definition, 'functions["' + temporalDef.read + '"]');
             if (!_.isFunction(temporalRead)) {
-              return reject(new Error('cannot find function "' + temporalDef.read + '"'));
+              return errorHook(new Error('cannot find function "' + temporalDef.read + '"'), hookArgs, backend, reject);
             }
             return resolve(temporalRead.call(_this, source, args, context, info));
           } else {
@@ -1964,7 +1981,7 @@ function read(backend, type) {
             } else {
               var versionFilter = _.get(_this, 'globals["' + _temporalExtension + '"].temporalFilter');
               if (!_.isFunction(versionFilter)) {
-                return reject(new Error('could not find "temporalFilter" in globals'));
+                return errorHook(new Error('could not find "temporalFilter" in globals'), hookArgs, backend, reject);
               }
               filter = versionFilter(type, args);
               args = _.omit(args, ['version', 'recordId', 'date', 'id']);
@@ -1985,12 +2002,12 @@ function read(backend, type) {
         }
 
         return filter.run(connection).then(function (result) {
-          return afterHook.call(_this, result, args, backend, function (err, result) {
-            if (err) return reject(asError(err));
+          return afterHook.call(_this, result, hookArgs, backend, function (error, result) {
+            if (error) return errorHook(error, hookArgs, backend, reject);
             return resolve(result);
           });
-        }).catch(function (err) {
-          return reject(asError(err));
+        }).catch(function (error) {
+          return errorHook(error, hookArgs, backend, reject);
         });
       });
     }).timeout(timeout || 10000);
@@ -2028,41 +2045,46 @@ var _updateResolver = function (backend, type) {
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         before = _backend$getTypeInfo.before,
         after = _backend$getTypeInfo.after,
+        error = _backend$getTypeInfo.error,
         timeout = _backend$getTypeInfo.timeout,
         primaryKey = _backend$getTypeInfo.primaryKey;
 
     var collection = backend.getCollection(type);
     var fnPath = 'backend_' + (batchMode ? 'batchU' : 'u') + 'pdate' + type;
-    var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-      return done();
-    });
-    var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-      return done(null, result);
-    });
 
     // ensure that the args are an array
     args = batchMode ? args.batch : [args];
 
     // create a new promise
     return new Promise$1(function (resolve, reject) {
+      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+        return done();
+      });
+      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+        return done(null, result);
+      });
+      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
+        return reject(err);
+      });
+      var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
+
       // run before hook
-      return beforeHook.call(_this, {
-        source: source,
-        args: batchMode ? args : _.first(args),
-        context: context,
-        info: info
-      }, backend, function (error) {
-        if (error) return reject(error);
+      return beforeHook.call(_this, hookArgs, backend, function (error) {
+        if (error) return errorHook(error, hookArgs, backend, reject);
 
         // pull the ids from the args
         var update = null;
         var ids = _.map(_.filter(args, primaryKey), primaryKey);
-        if (ids.length !== args.length) return reject('missing primaryKey "' + primaryKey + '" in update argument');
+        if (ids.length !== args.length) {
+          return errorHook(new Error('missing primaryKey "' + primaryKey + '" in update argument'), hookArgs, backend, reject);
+        }
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
           // check that temporal update is allowed
-          if (temporalDef.update === false) return reject(new Error('update is not allowed on this temporal type'));
+          if (temporalDef.update === false) {
+            return errorHook(new Error('update is not allowed on this temporal type'), hookArgs, backend, reject);
+          }
 
           // if a function was specified, use it
           if (_.isFunction(temporalDef.update)) {
@@ -2073,7 +2095,7 @@ var _updateResolver = function (backend, type) {
           else if (_.isString(temporalDef.update)) {
               var temporalUpdate = _.get(definition, 'functions["' + temporalDef.update + '"]');
               if (!_.isFunction(temporalUpdate)) {
-                return reject(new Error('cannot find function "' + temporalDef.update + '"'));
+                return errorHook(new Error('cannot find function "' + temporalDef.update + '"'), hookArgs, backend, reject);
               }
               return resolve(temporalUpdate.call(_this, source, args, context, info));
             }
@@ -2082,7 +2104,7 @@ var _updateResolver = function (backend, type) {
             else {
                 var versionUpdate = _.get(_this, 'globals["' + temporalExt + '"].temporalUpdate');
                 if (!_.isFunction(versionUpdate)) {
-                  return reject(new Error('could not find "temporalUpdate" in globals'));
+                  return errorHook(new Error('could not find "temporalUpdate" in globals'), hookArgs, backend, reject);
                 }
                 update = batchMode ? versionUpdate(type, args).coerceTo('ARRAY') : versionUpdate(type, args).coerceTo('ARRAY').nth(0);
               }
@@ -2109,11 +2131,13 @@ var _updateResolver = function (backend, type) {
 
         // run the query
         update.run(_connection).then(function (result) {
-          return afterHook.call(_this, result, batchMode ? args : _.first(args), backend, function (error, result) {
-            if (error) return reject(error);
+          return afterHook.call(_this, result, hookArgs, backend, function (error, result) {
+            if (error) return errorHook(error, hookArgs, backend, reject);
             return resolve(result);
           });
-        }).catch(reject);
+        }).catch(function (error) {
+          return errorHook(error, hookArgs, backend, reject);
+        });
       });
     }).timeout(timeout || 10000);
   };
@@ -2150,40 +2174,45 @@ function del(backend, type) {
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         before = _backend$getTypeInfo.before,
         after = _backend$getTypeInfo.after,
+        error = _backend$getTypeInfo.error,
         timeout = _backend$getTypeInfo.timeout,
         primaryKey = _backend$getTypeInfo.primaryKey;
 
     var collection = backend.getCollection(type);
     var fnPath = 'backend_' + (batchMode ? 'batchD' : 'd') + 'elete' + type;
-    var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-      return done();
-    });
-    var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-      return done(null, result);
-    });
 
     // ensure that the args are an array
     args = batchMode ? args.batch : [args];
 
     // create a new promise
     return new Promise$1(function (resolve, reject) {
-      return beforeHook.call(_this, {
-        source: source,
-        args: batchMode ? args : _.first(args),
-        context: context,
-        info: info
-      }, backend, function (error) {
-        if (error) return reject(error);
+      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+        return done();
+      });
+      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+        return done(null, result);
+      });
+      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
+        return reject(err);
+      });
+      var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
+
+      return beforeHook.call(_this, hookArgs, backend, function (error) {
+        if (error) return errorHook(error, hookArgs, backend, reject);
 
         // pull the ids from the args
         var del = null;
         var ids = _.map(_.filter(args, primaryKey), primaryKey);
-        if (ids.length !== args.length) return reject('missing primaryKey "' + primaryKey + '" in update argument');
+        if (ids.length !== args.length) {
+          return errorHook(new Error('missing primaryKey "' + primaryKey + '" in update argument'), hookArgs, backend, reject);
+        }
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
           // check that temporal update is allowed
-          if (temporalDef.delete === false) return reject(new Error('delete is not allowed on this temporal type'));
+          if (temporalDef.delete === false) {
+            return errorHook(new Error('delete is not allowed on this temporal type'), hookArgs, backend, reject);
+          }
 
           // if a function was specified, use it
           if (_.isFunction(temporalDef.delete)) {
@@ -2194,7 +2223,7 @@ function del(backend, type) {
           else if (_.isString(temporalDef.delete)) {
               var temporalDelete = _.get(definition, 'functions["' + temporalDef.delete + '"]');
               if (!_.isFunction(temporalDelete)) {
-                return reject(new Error('cannot find function "' + temporalDef.delete + '"'));
+                return errorHook(new Error('cannot find function "' + temporalDef.delete + '"'), hookArgs, backend, reject);
               }
               return resolve(temporalDelete.call(_this, source, args, context, info));
             }
@@ -2203,7 +2232,7 @@ function del(backend, type) {
             else {
                 var versionDelete = _.get(_this, 'globals["' + temporalExt + '"].temporalDelete');
                 if (!_.isFunction(versionDelete)) {
-                  return reject(new Error('could not find "temporalDelete" in globals'));
+                  return errorHook(new Error('could not find "temporalDelete" in globals'), hookArgs, backend, reject);
                 }
                 del = versionDelete(type, args);
               }
@@ -2220,11 +2249,13 @@ function del(backend, type) {
 
         // run the query
         del.run(_connection).then(function (result) {
-          return afterHook.call(_this, result, batchMode ? args : _.first(args), backend, function (error, result) {
-            if (error) return reject(error);
+          return afterHook.call(_this, result, hookArgs, backend, function (error, result) {
+            if (error) return errorHook(error, hookArgs, backend, reject);
             return resolve(result);
           });
-        }).catch(reject);
+        }).catch(function (error) {
+          return errorHook(error, hookArgs, backend, reject);
+        });
       });
     }).timeout(timeout || 10000);
   };
@@ -2319,6 +2350,7 @@ function subscribe$1(backend, type) {
     var _backend$getTypeInfo = backend.getTypeInfo(type, info),
         before = _backend$getTypeInfo.before,
         after = _backend$getTypeInfo.after,
+        error = _backend$getTypeInfo.error,
         timeout = _backend$getTypeInfo.timeout,
         nested = _backend$getTypeInfo.nested;
 
@@ -2334,17 +2366,22 @@ function subscribe$1(backend, type) {
 
     // let { filter, many } = getRelationFilter.call(this, backend, type, source, info, collection)
     var fnPath = 'backend_subscribe' + type;
-    var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-      return done();
-    });
-    var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-      return done(null, result);
-    });
 
     // handle basic subscribe
     return new Promise$1(function (resolve, reject) {
-      return beforeHook.call(_this, { source: source, args: args, context: context, info: info }, backend, function (err) {
-        if (err) return reject(asError(err));
+      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+        return done();
+      });
+      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+        return done(null, result);
+      });
+      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
+        return reject(err);
+      });
+      var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
+
+      return beforeHook.call(_this, hookArgs, backend, function (error) {
+        if (error) return errorHook(error, hookArgs, backend, reject);
 
         filter = getArgsFilter(backend, type, args, filter);
 
@@ -2366,7 +2403,7 @@ function subscribe$1(backend, type) {
                 v: filter.run(connection).then(function (result) {
                   return resolve(result);
                 }).catch(function (error) {
-                  return reject(asError(error));
+                  return errorHook(error, hookArgs, backend, reject);
                 })
               };
             }
@@ -2384,48 +2421,75 @@ function subscribe$1(backend, type) {
                   rootValue: info.rootValue,
                   context: context,
                   variableValues: info.variableValues
-                }, function (err) {
-                  if (err) {
+                }, function (error) {
+                  if (error) {
                     // on error, attempt to unsubscribe. it doesnt matter if it fails, reject the promise
                     return backend.subscriptionManager.unsubscribe(subscriptionId, subscriber, function () {
-                      return reject(err);
+                      return errorHook(error, hookArgs, backend, reject);
                     });
                   }
                   return resolve(result);
                 });
               }).catch(function (error) {
-                return reject(asError(error));
+                return errorHook(error, hookArgs, backend, reject);
               })
             };
           }();
 
           if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
-        } catch (err) {
-          return reject(asError(err));
+        } catch (error) {
+          return errorHook(error, hookArgs, backend, reject);
         }
       });
     }).timeout(timeout || 10000);
   };
 }
 
-function unsubscribe$1(backend) {
+function unsubscribe$1(backend, type) {
   return function (source, args) {
+    var _this = this;
+
     var context = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var info = arguments[3];
     var subscription = args.subscription,
         subscriber = args.subscriber;
 
+    var _backend$getTypeInfo = backend.getTypeInfo(type, info),
+        before = _backend$getTypeInfo.before,
+        after = _backend$getTypeInfo.after,
+        error = _backend$getTypeInfo.error,
+        timeout = _backend$getTypeInfo.timeout;
 
-    return new Promise(function (resolve, reject) {
-      try {
-        return backend.subscriptionManager.unsubscribe(subscription, subscriber, function (err) {
-          if (err) return reject(err);
-          return resolve({ unsubscribed: true });
-        });
-      } catch (err) {
+    var fnPath = 'backend_unsubscribe' + type;
+
+    return new Promise$1(function (resolve, reject) {
+      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
+        return done();
+      });
+      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
+        return done(null, result);
+      });
+      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
         return reject(err);
-      }
-    });
+      });
+      var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
+
+      return beforeHook.call(_this, hookArgs, backend, function (error) {
+        if (error) return errorHook(error, hookArgs, backend, reject);
+
+        try {
+          return backend.subscriptionManager.unsubscribe(subscription, subscriber, function (error) {
+            if (error) return errorHook(error, hookArgs, backend, reject);
+            return afterHook.call(_this, { unsubscribed: true }, hookArgs, backend, function (error, result) {
+              if (error) return errorHook(error, hookArgs, backend, reject);
+              return resolve(result);
+            });
+          });
+        } catch (error) {
+          return errorHook(error, hookArgs, backend, reject);
+        }
+      });
+    }).timeout(timeout || 10000);
   };
 }
 
@@ -2842,8 +2906,8 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
     }
   }, {
     key: 'unsubscribeResolver',
-    value: function unsubscribeResolver() {
-      return unsubscribe$1(this);
+    value: function unsubscribeResolver(type) {
+      return unsubscribe$1(this, type);
     }
   }]);
   return GraphQLFactoryRethinkDBBackend;

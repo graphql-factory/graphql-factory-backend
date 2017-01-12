@@ -18,7 +18,7 @@ export default function subscribe (backend, type) {
     let isVersioned = Boolean(versioned) && definition.hasPlugin('GraphQLFactoryTemporal')
 
     // type details
-    let { before, after, timeout, nested } = backend.getTypeInfo(type, info)
+    let { before, after, error, timeout, nested } = backend.getTypeInfo(type, info)
     let temporalMostCurrent = _.get(this, `globals["${_temporalExtension}"].temporalMostCurrent`)
     let collection = backend.getCollection(type)
     let filter = collection
@@ -31,13 +31,16 @@ export default function subscribe (backend, type) {
 
     // let { filter, many } = getRelationFilter.call(this, backend, type, source, info, collection)
     let fnPath = `backend_subscribe${type}`
-    let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-    let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
 
     // handle basic subscribe
     return new Promise((resolve, reject) => {
-      return beforeHook.call(this, { source, args, context, info }, backend, (err) => {
-        if (err) return reject(asError(err))
+      let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
+      let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
+      let errorHook = _.get(error, fnPath, (err, args, backend, done) => reject(err))
+      let hookArgs = { source, args: batchMode ? args : _.first(args), context, info }
+
+      return beforeHook.call(this, hookArgs, backend, (error) => {
+        if (error) return errorHook(error, hookArgs, backend, reject)
 
         filter = getArgsFilter(backend, type, args, filter)
 
@@ -64,7 +67,7 @@ export default function subscribe (backend, type) {
                 return resolve(result)
               })
               .catch((error) => {
-                return reject(asError(error))
+                return errorHook(error, hookArgs, backend, reject)
               })
           }
 
@@ -87,21 +90,21 @@ export default function subscribe (backend, type) {
                   context,
                   variableValues: info.variableValues
                 },
-                (err) => {
-                  if (err) {
+                (error) => {
+                  if (error) {
                     // on error, attempt to unsubscribe. it doesnt matter if it fails, reject the promise
                     return backend.subscriptionManager.unsubscribe(subscriptionId, subscriber, () => {
-                      return reject(err)
+                      return errorHook(error, hookArgs, backend, reject)
                     })
                   }
                   return resolve(result)
                 })
             })
             .catch((error) => {
-              return reject(asError(error))
+              return errorHook(error, hookArgs, backend, reject)
             })
-        } catch (err) {
-          return reject(asError(err))
+        } catch (error) {
+          return errorHook(error, hookArgs, backend, reject)
         }
       })
     })

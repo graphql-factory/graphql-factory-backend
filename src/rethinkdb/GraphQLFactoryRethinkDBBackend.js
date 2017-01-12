@@ -193,7 +193,7 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
     return subscribeResolver(this, type)
   }
 
-  unsubscribeResolver () {
-    return unsubscribeResolver(this)
+  unsubscribeResolver (type) {
+    return unsubscribeResolver(this, type)
   }
 }
