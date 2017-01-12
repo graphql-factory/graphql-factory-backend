@@ -1461,8 +1461,8 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     value: function getUniqueArgs(type, args) {
       var filters = [];
 
-      var _getTypeBackend = this.getTypeBackend(type),
-          uniques = _getTypeBackend.computed.uniques;
+      var _getTypeComputed3 = this.getTypeComputed(type),
+          uniques = _getTypeComputed3.uniques;
 
       _.forEach(uniques, function (unique) {
         var ufields = _.map(unique, function (u) {
@@ -1501,9 +1501,9 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     value: function updateArgsWithPrimary(type, args) {
       var newArgs = _.cloneDeep(args);
 
-      var _getTypeComputed3 = this.getTypeComputed(type),
-          primary = _getTypeComputed3.primary,
-          primaryKey = _getTypeComputed3.primaryKey;
+      var _getTypeComputed4 = this.getTypeComputed(type),
+          primary = _getTypeComputed4.primary,
+          primaryKey = _getTypeComputed4.primaryKey;
 
       var pk = this.getPrimaryFromArgs(type, args);
       if (primary.length > 1 && _.without(pk, undefined).length === primary.length) {
@@ -1715,8 +1715,9 @@ function violatesUnique(backend, type, args, filter) {
   filter = filter || backend.getCollection(type);
   var r = backend.r;
 
-  var unique = _.isArray(args) ? _.map(function (arg) {
-    return backend.getUniqueArgs(type, args);
+
+  var unique = _.isArray(args) ? _.map(args, function (arg) {
+    return backend.getUniqueArgs(type, arg);
   }) : [backend.getUniqueArgs(type, args)];
 
   // if there are no uniques, return false
@@ -1885,7 +1886,9 @@ function create(backend, type) {
             if (error) return reject(error);
             return resolve(result);
           });
-        }).catch(reject);
+        }).catch(function (error) {
+          return reject(error.msg ? new Error(error.msg) : error);
+        });
       });
     }).timeout(timeout || 10000);
   };

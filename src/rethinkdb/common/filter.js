@@ -114,6 +114,7 @@ export function getArgsFilter (backend, type, args, filter) {
 
 // determines unique constraints and if any have been violated
 /**
+ * TODO: not throwing errors on batch unique violations
  * determines if any unique constraints will be violated by the args
  * @param {Object} backend - factory backend instance
  * @param {String} type - graphql type name
@@ -124,8 +125,9 @@ export function getArgsFilter (backend, type, args, filter) {
 export function violatesUnique (backend, type, args, filter) {
   filter = filter || backend.getCollection(type)
   let { r } = backend
+
   let unique = _.isArray(args)
-    ? _.map((arg) => backend.getUniqueArgs(type, args))
+    ? _.map(args, (arg) => backend.getUniqueArgs(type, arg))
     : [backend.getUniqueArgs(type, args)]
 
   // if there are no uniques, return false

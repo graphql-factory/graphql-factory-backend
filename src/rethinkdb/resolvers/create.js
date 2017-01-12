@@ -113,7 +113,9 @@ export default function create (backend, type, batchMode = false) {
               return resolve(result)
             })
           })
-          .catch(reject)
+          .catch((error) => {
+            return reject(error.msg ? new Error(error.msg) : error)
+          })
       })
     })
       .timeout(timeout || 10000)

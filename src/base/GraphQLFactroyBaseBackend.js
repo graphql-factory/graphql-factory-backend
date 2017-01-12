@@ -344,7 +344,7 @@ export default class GraphQLFactoryBaseBackend extends Events {
 
   getUniqueArgs (type, args) {
     let filters = []
-    let { computed: { uniques } } = this.getTypeBackend(type)
+    let { uniques } = this.getTypeComputed(type)
     _.forEach(uniques, (unique) => {
       let ufields = _.map(unique, (u) => u.field)
       if (_.intersection(_.keys(args), ufields).length === ufields.length) {
