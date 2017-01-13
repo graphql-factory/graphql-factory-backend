@@ -84,6 +84,144 @@ export default class GraphQLFactoryBaseBackend extends Events {
   }
 
   /**
+   * Handles error middleware hooks
+   * @param {Object} context - resolve function context
+   * @param {Function|Array<Function>} hooks - middleware hooks
+   * @param {Error} error - error object
+   * @param {Object} args - arguments
+   * @param {Object} backend - factory backend
+   * @param {Function} done - reject function
+   * @returns {*}
+   */
+  errorMiddleware (context, hooks, error, args, backend, done) {
+    let handlers = {}
+
+    // ensure that all middleware hooks are functions
+    hooks = _.isFunction(hooks)
+      ? [hooks]
+      : _.isArray(hooks)
+        ? _.filter(hooks, _.isFunction)
+        : []
+
+    // if there are no hooks call the done handler with the results
+    if (!hooks.length) return done(error)
+
+    // create a main handler for non next callbacks
+    handlers.main = (err) => {
+      hooks = hooks.splice(1)
+      error = err || error
+
+      // if there is an error or no hooks call done with error or the result
+      if (!hooks.length) return done(error)
+
+      // otherwise call the current hook
+      return hooks[0].call(context, error, args, backend, handlers.main, handlers.next)
+    }
+
+    // create a next handler that calls done if there is an error otherwise the main handler
+    handlers.next = (err) => {
+      return err
+        ? done(err)
+        : handlers.main()
+    }
+
+    // make the initial call to the first hook with the main and next handlers
+    return hooks[0].call(context, error, args, backend, handlers.main, handlers.next)
+  }
+
+  /**
+   * Handles before middleware hooks
+   * @param {Object} context - resolve function context
+   * @param {Function|Array<Function>} hooks - middleware hooks
+   * @param {Object} args - arguments
+   * @param {Object} backend - factory backend
+   * @callback done
+   * @returns {*}
+   */
+  beforeMiddleware (context, hooks, args, backend, done) {
+    let handlers = {}
+
+    // ensure that all middleware hooks are functions
+    hooks = _.isFunction(hooks)
+      ? [hooks]
+      : _.isArray(hooks)
+        ? _.filter(hooks, _.isFunction)
+        : []
+
+    // if there are no hooks call the done handler with the results
+    if (!hooks.length) return done()
+
+    // create a main handler for non next callbacks
+    handlers.main = (err) => {
+      hooks = hooks.splice(1)
+
+      // if there is an error or no hooks call done with error or the result
+      if (err) return done(err)
+      if (!hooks.length) return done()
+
+      // otherwise call the current hook
+      return hooks[0].call(context, args, backend, handlers.main, handlers.next)
+    }
+
+    // create a next handler that calls done if there is an error otherwise the main handler
+    handlers.next = (err) => {
+      return err
+        ? done(err)
+        : handlers.main()
+    }
+
+    // make the initial call to the first hook with the main and next handlers
+    return hooks[0].call(context, args, backend, handlers.main, handlers.next)
+  }
+
+  /**
+   * Handles after middleware hooks
+   * @param {Object} context - resolve function context
+   * @param {Function|Array<Function>} hooks - middleware hooks
+   * @param {*} result - result of query/mutation
+   * @param {Object} args - arguments
+   * @param {Object} backend - factory backend
+   * @callback done
+   * @returns {*}
+   */
+  afterMiddleware (context, hooks, result, args, backend, done) {
+    let handlers = {}
+
+    // ensure that all middleware hooks are functions
+    hooks = _.isFunction(hooks)
+      ? [hooks]
+      : _.isArray(hooks)
+        ? _.filter(hooks, _.isFunction)
+        : []
+
+    // if there are no hooks call the done handler with the results
+    if (!hooks.length) return done(null, result)
+
+    // create a main handler for non next callbacks
+    handlers.main = (err, res) => {
+      hooks = hooks.splice(1)
+      result = res
+
+      // if there is an error or no hooks call done with error or the result
+      if (err) return done(err)
+      if (!hooks.length) return done(null, res)
+
+      // otherwise call the current hook
+      return hooks[0].call(context, result, args, backend, handlers.main, handlers.next)
+    }
+
+    // create a next handler that calls done if there is an error otherwise the main handler
+    handlers.next = (err) => {
+      return err
+        ? done(err)
+        : handlers.main(null, result)
+    }
+
+    // make the initial call to the first hook with the main and next handlers
+    return hooks[0].call(context, result, args, backend, handlers.main, handlers.next)
+  }
+
+  /**
    * Compiled the backend
    * @private
    */

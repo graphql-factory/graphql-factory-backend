@@ -30,19 +30,21 @@ export default function del (backend, type, batchMode = false) {
 
     // create a new promise
     return new Promise((resolve, reject) => {
-      let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-      let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
-      let errorHook = _.get(error, fnPath, (err, args, backend, done) => reject(err))
+      let beforeHook = _.get(before, fnPath)
+      let afterHook = _.get(after, fnPath)
+      let errorHook = _.get(error, fnPath)
       let hookArgs = { source, args: batchMode ? args : _.first(args), context, info }
 
-      return beforeHook.call(this, hookArgs, backend, (error) => {
-        if (error) return errorHook(error, hookArgs, backend, reject)
+      return backend.beforeMiddleware(this, beforeHook, hookArgs, backend, (error) => {
+        if (error) return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
 
         // pull the ids from the args
         let del = null
         let ids = _.map(_.filter(args, primaryKey), primaryKey)
         if (ids.length !== args.length) {
-          return errorHook(
+          return backend.errorMiddleware(
+            this,
+            errorHook,
             new Error(`missing primaryKey "${primaryKey}" in update argument`),
             hookArgs,
             backend,
@@ -54,7 +56,9 @@ export default function del (backend, type, batchMode = false) {
         if (hasTemporalPlugin && isVersioned) {
           // check that temporal update is allowed
           if (temporalDef.delete === false) {
-            return errorHook(
+            return backend.errorMiddleware(
+              this,
+              errorHook,
               new Error('delete is not allowed on this temporal type'),
               hookArgs,
               backend,
@@ -71,7 +75,9 @@ export default function del (backend, type, batchMode = false) {
           else if (_.isString(temporalDef.delete)) {
             let temporalDelete = _.get(definition, `functions["${temporalDef.delete}"]`)
             if (!_.isFunction(temporalDelete)) {
-              return errorHook(
+              return backend.errorMiddleware(
+                this,
+                errorHook,
                 new Error(`cannot find function "${temporalDef.delete}"`),
                 hookArgs,
                 backend,
@@ -85,7 +91,9 @@ export default function del (backend, type, batchMode = false) {
           else {
             let versionDelete = _.get(this, `globals["${temporalExt}"].temporalDelete`)
             if (!_.isFunction(versionDelete)) {
-              return errorHook(
+              return backend.errorMiddleware(
+                this,
+                errorHook,
                 new Error(`could not find "temporalDelete" in globals`),
                 hookArgs,
                 backend,
@@ -115,13 +123,13 @@ export default function del (backend, type, batchMode = false) {
         // run the query
         del.run(_connection)
           .then((result) => {
-            return afterHook.call(this, result, hookArgs, backend, (error, result) => {
-              if (error) return errorHook(error, hookArgs, backend, reject)
+            return backend.afterMiddleware(this, afterHook, result, hookArgs, backend, (error, result) => {
+              if (error) return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
               return resolve(result)
             })
           })
           .catch((error) => {
-            return errorHook(error, hookArgs, backend, reject)
+            return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
           })
       })
     })

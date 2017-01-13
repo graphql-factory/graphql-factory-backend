@@ -24,18 +24,20 @@ export default function read (backend, type) {
 
     // handle basic read
     return new Promise((resolve, reject) => {
-      let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-      let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
-      let errorHook = _.get(error, fnPath, (err, args, backend, done) => reject(err))
+      let beforeHook = _.get(before, fnPath)
+      let afterHook = _.get(after, fnPath)
+      let errorHook = _.get(error, fnPath)
       let hookArgs = { source, args: batchMode ? args : _.first(args), context, info }
 
-      return beforeHook.call(this, hookArgs, backend, (error) => {
-        if (error) return errorHook(error, hookArgs, backend, reject)
+      return backend.beforeMiddleware(this, beforeHook, hookArgs, backend, (error) => {
+        if (error) return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
 
         // handle temporal plugin
         if (isVersioned && !nested) {
           if (temporalDef.read === false) {
-            return errorHook(
+            return backend.errorMiddleware(
+              this,
+              errorHook,
               new Error('read is not allowed on this temporal type'),
               hookArgs,
               backend,
@@ -47,7 +49,9 @@ export default function read (backend, type) {
           } else if (_.isString(temporalDef.read)) {
             let temporalRead = _.get(definition, `functions["${temporalDef.read}"]`)
             if (!_.isFunction(temporalRead)) {
-              return errorHook(
+              return backend.errorMiddleware(
+                this,
+                errorHook,
                 new Error(`cannot find function "${temporalDef.read}"`),
                 hookArgs,
                 backend,
@@ -61,7 +65,9 @@ export default function read (backend, type) {
             } else {
               let versionFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
               if (!_.isFunction(versionFilter)) {
-                return errorHook(
+                return backend.errorMiddleware(
+                  this,
+                  errorHook,
                   new Error(`could not find "temporalFilter" in globals`),
                   hookArgs,
                   backend,
@@ -90,13 +96,13 @@ export default function read (backend, type) {
 
         return filter.run(connection)
           .then((result) => {
-            return afterHook.call(this, result, hookArgs, backend, (error, result) => {
-              if (error) return errorHook(error, hookArgs, backend, reject)
+            return backend.afterMiddleware(this, afterHook, result, hookArgs, backend, (error, result) => {
+              if (error) return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
               return resolve(result)
             })
           })
           .catch((error) => {
-            return errorHook(error, hookArgs, backend, reject)
+            return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
           })
       })
     })

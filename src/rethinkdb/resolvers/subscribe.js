@@ -34,13 +34,13 @@ export default function subscribe (backend, type) {
 
     // handle basic subscribe
     return new Promise((resolve, reject) => {
-      let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-      let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
-      let errorHook = _.get(error, fnPath, (err, args, backend, done) => reject(err))
+      let beforeHook = _.get(before, fnPath)
+      let afterHook = _.get(after, fnPath)
+      let errorHook = _.get(error, fnPath)
       let hookArgs = { source, args: batchMode ? args : _.first(args), context, info }
 
-      return beforeHook.call(this, hookArgs, backend, (error) => {
-        if (error) return errorHook(error, hookArgs, backend, reject)
+      return backend.beforeMiddleware(this, beforeHook, hookArgs, backend, (error) => {
+        if (error) return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
 
         filter = getArgsFilter(backend, type, args, filter)
 
@@ -67,7 +67,7 @@ export default function subscribe (backend, type) {
                 return resolve(result)
               })
               .catch((error) => {
-                return errorHook(error, hookArgs, backend, reject)
+                return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
               })
           }
 
@@ -94,17 +94,17 @@ export default function subscribe (backend, type) {
                   if (error) {
                     // on error, attempt to unsubscribe. it doesnt matter if it fails, reject the promise
                     return backend.subscriptionManager.unsubscribe(subscriptionId, subscriber, () => {
-                      return errorHook(error, hookArgs, backend, reject)
+                      return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
                     })
                   }
                   return resolve(result)
                 })
             })
             .catch((error) => {
-              return errorHook(error, hookArgs, backend, reject)
+              return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
             })
         } catch (error) {
-          return errorHook(error, hookArgs, backend, reject)
+          return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
         }
       })
     })

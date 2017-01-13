@@ -8,24 +8,25 @@ export default function unsubscribe (backend, type) {
     let fnPath = `backend_unsubscribe${type}`
 
     return new Promise((resolve, reject) => {
-      let beforeHook = _.get(before, fnPath, (args, backend, done) => done())
-      let afterHook = _.get(after, fnPath, (result, args, backend, done) => done(null, result))
-      let errorHook = _.get(error, fnPath, (err, args, backend, done) => reject(err))
+      let beforeHook = _.get(before, fnPath)
+      let afterHook = _.get(after, fnPath)
+      let errorHook = _.get(error, fnPath)
       let hookArgs = { source, args: batchMode ? args : _.first(args), context, info }
+      let result = { unsubscribed: true }
 
-      return beforeHook.call(this, hookArgs, backend, (error) => {
-        if (error) return errorHook(error, hookArgs, backend, reject)
+      return backend.beforeMiddleware(this, beforeHook, hookArgs, backend, (error) => {
+        if (error) return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
 
         try {
           return backend.subscriptionManager.unsubscribe(subscription, subscriber, (error) => {
-            if (error) return errorHook(error, hookArgs, backend, reject)
-            return afterHook.call(this, { unsubscribed: true }, hookArgs, backend, (error, result) => {
-              if (error) return errorHook(error, hookArgs, backend, reject)
+            if (error) return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
+            return backend.afterMiddleware(this, afterHook, result, hookArgs, backend, (error, result) => {
+              if (error) return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
               return resolve(result)
             })
           })
         } catch (error) {
-          return errorHook(error, hookArgs, backend, reject)
+          return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)
         }
       })
     })

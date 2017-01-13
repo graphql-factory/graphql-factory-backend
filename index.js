@@ -1121,12 +1121,141 @@ var GraphQLFactoryBaseBackend = function (_Events) {
   }
 
   /**
-   * Compiled the backend
-   * @private
+   * Handles error middleware hooks
+   * @param {Object} context - resolve function context
+   * @param {Function|Array<Function>} hooks - middleware hooks
+   * @param {Error} error - error object
+   * @param {Object} args - arguments
+   * @param {Object} backend - factory backend
+   * @param {Function} done - reject function
+   * @returns {*}
    */
 
 
   createClass(GraphQLFactoryBaseBackend, [{
+    key: 'errorMiddleware',
+    value: function errorMiddleware(context, hooks, error, args, backend, done) {
+      var handlers = {};
+
+      // ensure that all middleware hooks are functions
+      hooks = _.isFunction(hooks) ? [hooks] : _.isArray(hooks) ? _.filter(hooks, _.isFunction) : [];
+
+      // if there are no hooks call the done handler with the results
+      if (!hooks.length) return done(error);
+
+      // create a main handler for non next callbacks
+      handlers.main = function (err) {
+        hooks = hooks.splice(1);
+        error = err || error;
+
+        // if there is an error or no hooks call done with error or the result
+        if (!hooks.length) return done(error);
+
+        // otherwise call the current hook
+        return hooks[0].call(context, error, args, backend, handlers.main, handlers.next);
+      };
+
+      // create a next handler that calls done if there is an error otherwise the main handler
+      handlers.next = function (err) {
+        return err ? done(err) : handlers.main();
+      };
+
+      // make the initial call to the first hook with the main and next handlers
+      return hooks[0].call(context, error, args, backend, handlers.main, handlers.next);
+    }
+
+    /**
+     * Handles before middleware hooks
+     * @param {Object} context - resolve function context
+     * @param {Function|Array<Function>} hooks - middleware hooks
+     * @param {Object} args - arguments
+     * @param {Object} backend - factory backend
+     * @callback done
+     * @returns {*}
+     */
+
+  }, {
+    key: 'beforeMiddleware',
+    value: function beforeMiddleware(context, hooks, args, backend, done) {
+      var handlers = {};
+
+      // ensure that all middleware hooks are functions
+      hooks = _.isFunction(hooks) ? [hooks] : _.isArray(hooks) ? _.filter(hooks, _.isFunction) : [];
+
+      // if there are no hooks call the done handler with the results
+      if (!hooks.length) return done();
+
+      // create a main handler for non next callbacks
+      handlers.main = function (err) {
+        hooks = hooks.splice(1);
+
+        // if there is an error or no hooks call done with error or the result
+        if (err) return done(err);
+        if (!hooks.length) return done();
+
+        // otherwise call the current hook
+        return hooks[0].call(context, args, backend, handlers.main, handlers.next);
+      };
+
+      // create a next handler that calls done if there is an error otherwise the main handler
+      handlers.next = function (err) {
+        return err ? done(err) : handlers.main();
+      };
+
+      // make the initial call to the first hook with the main and next handlers
+      return hooks[0].call(context, args, backend, handlers.main, handlers.next);
+    }
+
+    /**
+     * Handles after middleware hooks
+     * @param {Object} context - resolve function context
+     * @param {Function|Array<Function>} hooks - middleware hooks
+     * @param {*} result - result of query/mutation
+     * @param {Object} args - arguments
+     * @param {Object} backend - factory backend
+     * @callback done
+     * @returns {*}
+     */
+
+  }, {
+    key: 'afterMiddleware',
+    value: function afterMiddleware(context, hooks, result, args, backend, done) {
+      var handlers = {};
+
+      // ensure that all middleware hooks are functions
+      hooks = _.isFunction(hooks) ? [hooks] : _.isArray(hooks) ? _.filter(hooks, _.isFunction) : [];
+
+      // if there are no hooks call the done handler with the results
+      if (!hooks.length) return done(null, result);
+
+      // create a main handler for non next callbacks
+      handlers.main = function (err, res) {
+        hooks = hooks.splice(1);
+        result = res;
+
+        // if there is an error or no hooks call done with error or the result
+        if (err) return done(err);
+        if (!hooks.length) return done(null, res);
+
+        // otherwise call the current hook
+        return hooks[0].call(context, result, args, backend, handlers.main, handlers.next);
+      };
+
+      // create a next handler that calls done if there is an error otherwise the main handler
+      handlers.next = function (err) {
+        return err ? done(err) : handlers.main(null, result);
+      };
+
+      // make the initial call to the first hook with the main and next handlers
+      return hooks[0].call(context, result, args, backend, handlers.main, handlers.next);
+    }
+
+    /**
+     * Compiled the backend
+     * @private
+     */
+
+  }, {
     key: '_compile',
     value: function _compile() {
       var compiler = new GraphQLFactoryBackendCompiler(this);
@@ -1825,27 +1954,21 @@ function create(backend, type) {
 
     // create new promise
     return new Promise$1(function (resolve, reject) {
-      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-        return done();
-      });
-      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-        return done(null, result);
-      });
-      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
-        return reject(err);
-      });
+      var beforeHook = _.get(before, fnPath);
+      var afterHook = _.get(after, fnPath);
+      var errorHook = _.get(error, fnPath);
       var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
       var create = null;
 
       // run before hook
-      return beforeHook.call(_this, hookArgs, backend, function (error) {
-        if (error) return errorHook(error, hookArgs, backend, reject);
+      return backend.beforeMiddleware(_this, beforeHook, hookArgs, backend, function (error) {
+        if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
           // check that temporal create is allowed
           if (temporalDef.create === false) {
-            return errorHook(new Error('create is not allowed on this temporal type'), hookArgs, backend, reject);
+            return backend.errorMiddleware(_this, errorHook, new Error('create is not allowed on this temporal type'), hookArgs, backend, reject);
           }
 
           // if a function was specified, use it
@@ -1857,7 +1980,7 @@ function create(backend, type) {
           else if (_.isString(temporalDef.create)) {
               var temporalCreate = _.get(definition, 'functions["' + temporalDef.create + '"]');
               if (!_.isFunction(temporalCreate)) {
-                return errorHook(new Error('cannot find function "' + temporalDef.create + '"'), hookArgs, backend, reject);
+                return backend.errorMiddleware(_this, errorHook, new Error('cannot find function "' + temporalDef.create + '"'), hookArgs, backend, reject);
               }
               return resolve(temporalCreate.call(_this, source, args, context, info));
             }
@@ -1866,7 +1989,7 @@ function create(backend, type) {
             else {
                 var versionCreate = _.get(_this, 'globals["' + temporalExt + '"].temporalCreate');
                 if (!_.isFunction(versionCreate)) {
-                  return errorHook(new Error('could not find "temporalCreate" in globals'), hookArgs, backend, reject);
+                  return backend.errorMiddleware(_this, errorHook, new Error('could not find "temporalCreate" in globals'), hookArgs, backend, reject);
                 }
                 create = versionCreate(type, args);
               }
@@ -1884,12 +2007,12 @@ function create(backend, type) {
 
         // run the query
         return create.run(_connection).then(function (result) {
-          return afterHook.call(_this, result, hookArgs, backend, function (error, result) {
-            if (error) return errorHook(error, hookArgs, backend, reject);
+          return backend.afterMiddleware(_this, afterHook, result, hookArgs, backend, function (error, result) {
+            if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
             return resolve(result);
           });
         }).catch(function (error) {
-          return errorHook(error, hookArgs, backend, reject);
+          return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
         });
       });
     }).timeout(timeout || 10000);
@@ -1940,31 +2063,25 @@ function read(backend, type) {
 
     // handle basic read
     return new Promise$1(function (resolve, reject) {
-      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-        return done();
-      });
-      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-        return done(null, result);
-      });
-      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
-        return reject(err);
-      });
+      var beforeHook = _.get(before, fnPath);
+      var afterHook = _.get(after, fnPath);
+      var errorHook = _.get(error, fnPath);
       var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
 
-      return beforeHook.call(_this, hookArgs, backend, function (error) {
-        if (error) return errorHook(error, hookArgs, backend, reject);
+      return backend.beforeMiddleware(_this, beforeHook, hookArgs, backend, function (error) {
+        if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
 
         // handle temporal plugin
         if (isVersioned && !nested) {
           if (temporalDef.read === false) {
-            return errorHook(new Error('read is not allowed on this temporal type'), hookArgs, backend, reject);
+            return backend.errorMiddleware(_this, errorHook, new Error('read is not allowed on this temporal type'), hookArgs, backend, reject);
           }
           if (_.isFunction(temporalDef.read)) {
             return resolve(temporalDef.read.call(_this, source, args, context, info));
           } else if (_.isString(temporalDef.read)) {
             var temporalRead = _.get(definition, 'functions["' + temporalDef.read + '"]');
             if (!_.isFunction(temporalRead)) {
-              return errorHook(new Error('cannot find function "' + temporalDef.read + '"'), hookArgs, backend, reject);
+              return backend.errorMiddleware(_this, errorHook, new Error('cannot find function "' + temporalDef.read + '"'), hookArgs, backend, reject);
             }
             return resolve(temporalRead.call(_this, source, args, context, info));
           } else {
@@ -1973,7 +2090,7 @@ function read(backend, type) {
             } else {
               var versionFilter = _.get(_this, 'globals["' + _temporalExtension + '"].temporalFilter');
               if (!_.isFunction(versionFilter)) {
-                return errorHook(new Error('could not find "temporalFilter" in globals'), hookArgs, backend, reject);
+                return backend.errorMiddleware(_this, errorHook, new Error('could not find "temporalFilter" in globals'), hookArgs, backend, reject);
               }
               filter = versionFilter(type, args);
               args = _.omit(args, ['version', 'recordId', 'date', 'id']);
@@ -1992,12 +2109,12 @@ function read(backend, type) {
         filter = many ? filter.coerceTo('ARRAY') : filter.nth(0).default(null);
 
         return filter.run(connection).then(function (result) {
-          return afterHook.call(_this, result, hookArgs, backend, function (error, result) {
-            if (error) return errorHook(error, hookArgs, backend, reject);
+          return backend.afterMiddleware(_this, afterHook, result, hookArgs, backend, function (error, result) {
+            if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
             return resolve(result);
           });
         }).catch(function (error) {
-          return errorHook(error, hookArgs, backend, reject);
+          return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
         });
       });
     }).timeout(timeout || 10000);
@@ -2047,33 +2164,27 @@ var _updateResolver = function (backend, type) {
 
     // create a new promise
     return new Promise$1(function (resolve, reject) {
-      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-        return done();
-      });
-      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-        return done(null, result);
-      });
-      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
-        return reject(err);
-      });
+      var beforeHook = _.get(before, fnPath);
+      var afterHook = _.get(after, fnPath);
+      var errorHook = _.get(error, fnPath);
       var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
 
       // run before hook
-      return beforeHook.call(_this, hookArgs, backend, function (error) {
-        if (error) return errorHook(error, hookArgs, backend, reject);
+      return backend.beforeMiddleware(_this, beforeHook, hookArgs, backend, function (error) {
+        if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
 
         // pull the ids from the args
         var update = null;
         var ids = _.map(_.filter(args, primaryKey), primaryKey);
         if (ids.length !== args.length) {
-          return errorHook(new Error('missing primaryKey "' + primaryKey + '" in update argument'), hookArgs, backend, reject);
+          return backend.errorMiddleware(_this, errorHook, new Error('missing primaryKey "' + primaryKey + '" in update argument'), hookArgs, backend, reject);
         }
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
           // check that temporal update is allowed
           if (temporalDef.update === false) {
-            return errorHook(new Error('update is not allowed on this temporal type'), hookArgs, backend, reject);
+            return backend.errorMiddleware(_this, errorHook, new Error('update is not allowed on this temporal type'), hookArgs, backend, reject);
           }
 
           // if a function was specified, use it
@@ -2085,7 +2196,7 @@ var _updateResolver = function (backend, type) {
           else if (_.isString(temporalDef.update)) {
               var temporalUpdate = _.get(definition, 'functions["' + temporalDef.update + '"]');
               if (!_.isFunction(temporalUpdate)) {
-                return errorHook(new Error('cannot find function "' + temporalDef.update + '"'), hookArgs, backend, reject);
+                return backend.errorMiddleware(_this, errorHook, new Error('cannot find function "' + temporalDef.update + '"'), hookArgs, backend, reject);
               }
               return resolve(temporalUpdate.call(_this, source, args, context, info));
             }
@@ -2094,7 +2205,7 @@ var _updateResolver = function (backend, type) {
             else {
                 var versionUpdate = _.get(_this, 'globals["' + temporalExt + '"].temporalUpdate');
                 if (!_.isFunction(versionUpdate)) {
-                  return errorHook(new Error('could not find "temporalUpdate" in globals'), hookArgs, backend, reject);
+                  return backend.errorMiddleware(_this, errorHook, new Error('could not find "temporalUpdate" in globals'), hookArgs, backend, reject);
                 }
                 update = versionUpdate(type, args);
               }
@@ -2121,12 +2232,12 @@ var _updateResolver = function (backend, type) {
 
         // run the query
         update.run(_connection).then(function (result) {
-          return afterHook.call(_this, result, hookArgs, backend, function (error, result) {
-            if (error) return errorHook(error, hookArgs, backend, reject);
+          return backend.afterMiddleware(_this, afterHook, result, hookArgs, backend, function (error, result) {
+            if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
             return resolve(result);
           });
         }).catch(function (error) {
-          return errorHook(error, hookArgs, backend, reject);
+          return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
         });
       });
     }).timeout(timeout || 10000);
@@ -2176,32 +2287,26 @@ function del(backend, type) {
 
     // create a new promise
     return new Promise$1(function (resolve, reject) {
-      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-        return done();
-      });
-      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-        return done(null, result);
-      });
-      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
-        return reject(err);
-      });
+      var beforeHook = _.get(before, fnPath);
+      var afterHook = _.get(after, fnPath);
+      var errorHook = _.get(error, fnPath);
       var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
 
-      return beforeHook.call(_this, hookArgs, backend, function (error) {
-        if (error) return errorHook(error, hookArgs, backend, reject);
+      return backend.beforeMiddleware(_this, beforeHook, hookArgs, backend, function (error) {
+        if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
 
         // pull the ids from the args
         var del = null;
         var ids = _.map(_.filter(args, primaryKey), primaryKey);
         if (ids.length !== args.length) {
-          return errorHook(new Error('missing primaryKey "' + primaryKey + '" in update argument'), hookArgs, backend, reject);
+          return backend.errorMiddleware(_this, errorHook, new Error('missing primaryKey "' + primaryKey + '" in update argument'), hookArgs, backend, reject);
         }
 
         // handle temporal plugin
         if (hasTemporalPlugin && isVersioned) {
           // check that temporal update is allowed
           if (temporalDef.delete === false) {
-            return errorHook(new Error('delete is not allowed on this temporal type'), hookArgs, backend, reject);
+            return backend.errorMiddleware(_this, errorHook, new Error('delete is not allowed on this temporal type'), hookArgs, backend, reject);
           }
 
           // if a function was specified, use it
@@ -2213,7 +2318,7 @@ function del(backend, type) {
           else if (_.isString(temporalDef.delete)) {
               var temporalDelete = _.get(definition, 'functions["' + temporalDef.delete + '"]');
               if (!_.isFunction(temporalDelete)) {
-                return errorHook(new Error('cannot find function "' + temporalDef.delete + '"'), hookArgs, backend, reject);
+                return backend.errorMiddleware(_this, errorHook, new Error('cannot find function "' + temporalDef.delete + '"'), hookArgs, backend, reject);
               }
               return resolve(temporalDelete.call(_this, source, args, context, info));
             }
@@ -2222,7 +2327,7 @@ function del(backend, type) {
             else {
                 var versionDelete = _.get(_this, 'globals["' + temporalExt + '"].temporalDelete');
                 if (!_.isFunction(versionDelete)) {
-                  return errorHook(new Error('could not find "temporalDelete" in globals'), hookArgs, backend, reject);
+                  return backend.errorMiddleware(_this, errorHook, new Error('could not find "temporalDelete" in globals'), hookArgs, backend, reject);
                 }
                 del = versionDelete(type, args);
               }
@@ -2239,12 +2344,12 @@ function del(backend, type) {
 
         // run the query
         del.run(_connection).then(function (result) {
-          return afterHook.call(_this, result, hookArgs, backend, function (error, result) {
-            if (error) return errorHook(error, hookArgs, backend, reject);
+          return backend.afterMiddleware(_this, afterHook, result, hookArgs, backend, function (error, result) {
+            if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
             return resolve(result);
           });
         }).catch(function (error) {
-          return errorHook(error, hookArgs, backend, reject);
+          return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
         });
       });
     }).timeout(timeout || 10000);
@@ -2359,19 +2464,13 @@ function subscribe(backend, type) {
 
     // handle basic subscribe
     return new Promise$1(function (resolve, reject) {
-      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-        return done();
-      });
-      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-        return done(null, result);
-      });
-      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
-        return reject(err);
-      });
+      var beforeHook = _.get(before, fnPath);
+      var afterHook = _.get(after, fnPath);
+      var errorHook = _.get(error, fnPath);
       var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
 
-      return beforeHook.call(_this, hookArgs, backend, function (error) {
-        if (error) return errorHook(error, hookArgs, backend, reject);
+      return backend.beforeMiddleware(_this, beforeHook, hookArgs, backend, function (error) {
+        if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
 
         filter = getArgsFilter(backend, type, args, filter);
 
@@ -2393,7 +2492,7 @@ function subscribe(backend, type) {
                 v: filter.run(connection).then(function (result) {
                   return resolve(result);
                 }).catch(function (error) {
-                  return errorHook(error, hookArgs, backend, reject);
+                  return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
                 })
               };
             }
@@ -2415,20 +2514,20 @@ function subscribe(backend, type) {
                   if (error) {
                     // on error, attempt to unsubscribe. it doesnt matter if it fails, reject the promise
                     return backend.subscriptionManager.unsubscribe(subscriptionId, subscriber, function () {
-                      return errorHook(error, hookArgs, backend, reject);
+                      return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
                     });
                   }
                   return resolve(result);
                 });
               }).catch(function (error) {
-                return errorHook(error, hookArgs, backend, reject);
+                return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
               })
             };
           }();
 
           if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
         } catch (error) {
-          return errorHook(error, hookArgs, backend, reject);
+          return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
         }
       });
     }).timeout(timeout || 10000);
@@ -2453,30 +2552,25 @@ function unsubscribe(backend, type) {
     var fnPath = 'backend_unsubscribe' + type;
 
     return new Promise$1(function (resolve, reject) {
-      var beforeHook = _.get(before, fnPath, function (args, backend, done) {
-        return done();
-      });
-      var afterHook = _.get(after, fnPath, function (result, args, backend, done) {
-        return done(null, result);
-      });
-      var errorHook = _.get(error, fnPath, function (err, args, backend, done) {
-        return reject(err);
-      });
+      var beforeHook = _.get(before, fnPath);
+      var afterHook = _.get(after, fnPath);
+      var errorHook = _.get(error, fnPath);
       var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
+      var result = { unsubscribed: true };
 
-      return beforeHook.call(_this, hookArgs, backend, function (error) {
-        if (error) return errorHook(error, hookArgs, backend, reject);
+      return backend.beforeMiddleware(_this, beforeHook, hookArgs, backend, function (error) {
+        if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
 
         try {
           return backend.subscriptionManager.unsubscribe(subscription, subscriber, function (error) {
-            if (error) return errorHook(error, hookArgs, backend, reject);
-            return afterHook.call(_this, { unsubscribed: true }, hookArgs, backend, function (error, result) {
-              if (error) return errorHook(error, hookArgs, backend, reject);
+            if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
+            return backend.afterMiddleware(_this, afterHook, result, hookArgs, backend, function (error, result) {
+              if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
               return resolve(result);
             });
           });
         } catch (error) {
-          return errorHook(error, hookArgs, backend, reject);
+          return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
         }
       });
     }).timeout(timeout || 10000);
