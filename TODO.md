@@ -13,12 +13,6 @@ Here lies a summary of things that I would like to investigate and/or implement
 
 ---
 
-### Middleware
-
-* ~introduce an express style middleware for before, after, and error hooks~ - Completed
-
----
-
 ### Logging
 
 * add ability to define log streams and integrate logging more tightly
