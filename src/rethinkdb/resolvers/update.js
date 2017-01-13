@@ -94,9 +94,7 @@ export default function (backend, type, batchMode = false) {
                 reject
               )
             }
-            update = batchMode
-              ? versionUpdate(type, args).coerceTo('ARRAY')
-              : versionUpdate(type, args).coerceTo('ARRAY').nth(0)
+            update = versionUpdate(type, args)
           }
         }
 

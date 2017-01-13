@@ -172,6 +172,7 @@ export default class GraphQLFactoryBackendCompiler {
     this.extension = backend._extension
     this.prefix = _.isString(backend._prefix) ? backend._prefix : ''
     this.definition = backend.definition
+    this.queryArgs = {}
   }
 
   /**
@@ -226,6 +227,7 @@ export default class GraphQLFactoryBackendCompiler {
       let create = { type: 'Input', fields: {} }
       let update = { type: 'Input', fields: {} }
       let remove = { type: 'Input', fields: {} }
+      let query = {}
 
       if (isObjectType(type)) {
         // get the computed belongsTo relations
@@ -248,7 +250,7 @@ export default class GraphQLFactoryBackendCompiler {
           }
 
           // get the type name and if it is a list
-          let { primary, nullable, has, belongsTo } = def
+          let { primary, nullable, has, belongsTo, protect } = def
           let type = getType(def)
           let fieldTypeName = getTypeName(type)
           let isList = _.isArray(type)
@@ -265,14 +267,19 @@ export default class GraphQLFactoryBackendCompiler {
             _.set(create, `fields["${fieldName}"]`, { type, nullable: true })
             _.set(update, `fields["${fieldName}"]`, { type, nullable: false })
             _.set(remove, `fields["${fieldName}"]`, { type, nullable: false })
+            _.set(query, `["${fieldName}"]`, { type })
           }
 
           // check for belongsTo which should not be included because it is a resolved field
           // also ignore the temporal extension
-          else if (!has
-            && (belongsTo
-            || (this.isVersioned(typeDef) && fieldName === this.temporalExtension)
-            || _.includes(belongsToRelations, fieldName))) {
+          else if (
+            !has
+            && (
+              belongsTo
+              || (this.isVersioned(typeDef) && fieldName === this.temporalExtension)
+              || _.includes(belongsToRelations, fieldName)
+            )
+          ) {
             return true
           }
 
@@ -281,6 +288,7 @@ export default class GraphQLFactoryBackendCompiler {
             || be.extendsType(fieldTypeName, ['Input', 'Enum', 'Scalar']).length) {
             _.set(create, `fields["${fieldName}"]`, { type, nullable })
             _.set(update, `fields["${fieldName}"]`, { type })
+            _.set(query, `["${fieldName}"]`, { type })
           }
 
           // check for valid extended types
@@ -319,6 +327,9 @@ export default class GraphQLFactoryBackendCompiler {
               })
             }
           }
+
+          // check for protected and remove from update
+          if (protect === true) delete update.fields[fieldName]
         })
 
         // if versioned, add extra fields
@@ -329,12 +340,19 @@ export default class GraphQLFactoryBackendCompiler {
           update.fields = _.merge(update.fields, {
             useCurrent: { type: 'Boolean' }
           })
+          query = _.merge(query, {
+            id: { type: 'String' },
+            version: { type: 'String' },
+            recordId: { type: 'String' },
+            date: { type: 'TemporalDateTime' }
+          })
         }
 
         // add the types to the definition
         if (!_.isEmpty(create.fields)) types[makeInputName(typeName, CREATE)] = create
         if (!_.isEmpty(update.fields)) types[makeInputName(typeName, UPDATE)] = update
         if (!_.isEmpty(remove.fields)) types[makeInputName(typeName, DELETE)] = remove
+        this.queryArgs[typeName] = query
       }
     })
 
@@ -786,18 +804,6 @@ export default class GraphQLFactoryBackendCompiler {
    */
   buildArgs (definition, operation, rootName, opName) {
     let fields = _.get(definition, 'fields', {})
-    // let primaryKey = _.get(this.backend.getTypeComputed(rootName), 'primaryKey', 'id')
-    let versioned = this.isVersioned(definition)
-
-    // if the type is versioned create extra args
-    let versionQueryFields = versioned
-      ? {
-        id: { type: 'String' },
-        version: { type: 'String' },
-        recordId: { type: 'String' },
-        date: { type: 'TemporalDateTime' }
-      }
-      : {}
 
     // check for batch operations and use the generated inputs
     if (operation === MUTATION && isBatchOperation(opName)) {
@@ -819,28 +825,15 @@ export default class GraphQLFactoryBackendCompiler {
 
     // if a query, copy a create without its nullables and add an overridable limit
     if (operation === QUERY) {
-      let typeQueryInput = _.get(this.definition.types, `["${makeInputName(rootName, CREATE)}"].fields`)
-
-      return _.merge(
-        { limit: { type: 'Int' } },
-        _.mapValues(typeQueryInput, (def) => {
-          let { type } = def
-          return { type }
-        }),
-        versionQueryFields
-      )
+      return _.merge({ limit: { type: 'Int' } }, this.queryArgs[rootName])
     }
 
     // if a subscription, cope a create without its nullables and add a subscriber
     if (operation === SUBSCRIPTION && opName === SUBSCRIBE) {
-      let typeSubInput = _.get(this.definition.types, `["${makeInputName(rootName, CREATE)}"].fields`)
       return _.merge(
-        _.mapValues(typeSubInput, (def) => {
-          let { type } = def
-          return { type }
-        }),
-        { subscriber: { type: 'String', nullable: false } },
-        versionQueryFields
+        { limit: { type: 'Int' } },
+        this.queryArgs[rootName],
+        { subscriber: { type: 'String', nullable: false } }
       )
     }
 

@@ -1,7 +1,7 @@
-import rethinkdbUnitTest from './rethinkdb/index'
+import compileUnitTest from './compile/index'
 
 export default function unitTests () {
   describe('Unit Tests', () => {
-    rethinkdbUnitTest()
+    compileUnitTest()
   })
 }

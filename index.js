@@ -198,7 +198,7 @@ function makeObjectName(schema, op) {
  * @param {Object} fields - field definition
  * @return {null|String|Array<String>}
  */
-function getPrimary$1(fields) {
+function getPrimary(fields) {
   var primary = _(fields).pickBy(function (v) {
     return v.primary === true;
   }).keys().value();
@@ -298,6 +298,7 @@ var GraphQLFactoryBackendCompiler = function () {
     this.extension = backend._extension;
     this.prefix = _.isString(backend._prefix) ? backend._prefix : '';
     this.definition = backend.definition;
+    this.queryArgs = {};
   }
 
   /**
@@ -364,6 +365,7 @@ var GraphQLFactoryBackendCompiler = function () {
         var create = { type: 'Input', fields: {} };
         var update = { type: 'Input', fields: {} };
         var remove = { type: 'Input', fields: {} };
+        var query = {};
 
         if (isObjectType(type)) {
           (function () {
@@ -390,7 +392,8 @@ var GraphQLFactoryBackendCompiler = function () {
                   primary = _def.primary,
                   nullable = _def.nullable,
                   has = _def.has,
-                  belongsTo = _def.belongsTo;
+                  belongsTo = _def.belongsTo,
+                  protect = _def.protect;
 
               var type = getType(def);
               var fieldTypeName = getTypeName(type);
@@ -404,6 +407,7 @@ var GraphQLFactoryBackendCompiler = function () {
                 _.set(create, 'fields["' + fieldName + '"]', { type: type, nullable: true });
                 _.set(update, 'fields["' + fieldName + '"]', { type: type, nullable: false });
                 _.set(remove, 'fields["' + fieldName + '"]', { type: type, nullable: false });
+                _.set(query, '["' + fieldName + '"]', { type: type });
               }
 
               // check for belongsTo which should not be included because it is a resolved field
@@ -416,6 +420,7 @@ var GraphQLFactoryBackendCompiler = function () {
                 else if (isPrimitive(fieldTypeName) || be.extendsType(fieldTypeName, ['Input', 'Enum', 'Scalar']).length) {
                     _.set(create, 'fields["' + fieldName + '"]', { type: type, nullable: nullable });
                     _.set(update, 'fields["' + fieldName + '"]', { type: type });
+                    _.set(query, '["' + fieldName + '"]', { type: type });
                   }
 
                   // check for valid extended types
@@ -454,6 +459,9 @@ var GraphQLFactoryBackendCompiler = function () {
                           });
                         }
                     }
+
+              // check for protected and remove from update
+              if (protect === true) delete update.fields[fieldName];
             });
 
             // if versioned, add extra fields
@@ -464,12 +472,19 @@ var GraphQLFactoryBackendCompiler = function () {
               update.fields = _.merge(update.fields, {
                 useCurrent: { type: 'Boolean' }
               });
+              query = _.merge(query, {
+                id: { type: 'String' },
+                version: { type: 'String' },
+                recordId: { type: 'String' },
+                date: { type: 'TemporalDateTime' }
+              });
             }
 
             // add the types to the definition
             if (!_.isEmpty(create.fields)) types[makeInputName(typeName, CREATE)] = create;
             if (!_.isEmpty(update.fields)) types[makeInputName(typeName, UPDATE)] = update;
             if (!_.isEmpty(remove.fields)) types[makeInputName(typeName, DELETE)] = remove;
+            _this.queryArgs[typeName] = query;
           })();
         }
       });
@@ -620,7 +635,7 @@ var GraphQLFactoryBackendCompiler = function () {
         computed.schemas = !schema ? [_this3.backend._namespace] : _.isArray(schema) ? schema : [schema];
 
         // get the primary key name
-        var primary = computed.primary = getPrimary$1(fields);
+        var primary = computed.primary = getPrimary(fields);
         computed.primaryKey = ext.primaryKey || _.isArray(primary) ? _.camelCase(primary.join('-')) : primary;
 
         // determine the type of the primary
@@ -965,16 +980,6 @@ var GraphQLFactoryBackendCompiler = function () {
     key: 'buildArgs',
     value: function buildArgs(definition, operation, rootName, opName) {
       var fields = _.get(definition, 'fields', {});
-      // let primaryKey = _.get(this.backend.getTypeComputed(rootName), 'primaryKey', 'id')
-      var versioned = this.isVersioned(definition);
-
-      // if the type is versioned create extra args
-      var versionQueryFields = versioned ? {
-        id: { type: 'String' },
-        version: { type: 'String' },
-        recordId: { type: 'String' },
-        date: { type: 'TemporalDateTime' }
-      } : {};
 
       // check for batch operations and use the generated inputs
       if (operation === MUTATION && isBatchOperation(opName)) {
@@ -996,23 +1001,12 @@ var GraphQLFactoryBackendCompiler = function () {
 
       // if a query, copy a create without its nullables and add an overridable limit
       if (operation === QUERY) {
-        var typeQueryInput = _.get(this.definition.types, '["' + makeInputName(rootName, CREATE) + '"].fields');
-
-        return _.merge({ limit: { type: 'Int' } }, _.mapValues(typeQueryInput, function (def) {
-          var type = def.type;
-
-          return { type: type };
-        }), versionQueryFields);
+        return _.merge({ limit: { type: 'Int' } }, this.queryArgs[rootName]);
       }
 
       // if a subscription, cope a create without its nullables and add a subscriber
       if (operation === SUBSCRIPTION && opName === SUBSCRIBE) {
-        var typeSubInput = _.get(this.definition.types, '["' + makeInputName(rootName, CREATE) + '"].fields');
-        return _.merge(_.mapValues(typeSubInput, function (def) {
-          var type = def.type;
-
-          return { type: type };
-        }), { subscriber: { type: 'String', nullable: false } }, versionQueryFields);
+        return _.merge({ limit: { type: 'Int' } }, this.queryArgs[rootName], { subscriber: { type: 'String', nullable: false } });
       }
 
       // check for mutation
@@ -1558,7 +1552,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
 
   }, {
     key: 'plugin',
-    get: function get() {
+    get: function get$$1() {
       var _this8 = this;
 
       if (!this._plugin) {
@@ -1572,7 +1566,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     }
   }, {
     key: 'lib',
-    get: function get() {
+    get: function get$$1() {
       if (!this._lib) this._lib = this.factory.make(this.plugin);
       return this._lib;
     }
@@ -1874,7 +1868,7 @@ function create(backend, type) {
                 if (!_.isFunction(versionCreate)) {
                   return errorHook(new Error('could not find "temporalCreate" in globals'), hookArgs, backend, reject);
                 }
-                create = batchMode ? versionCreate(type, args).coerceTo('ARRAY') : versionCreate(type, args).coerceTo('ARRAY').nth(0);
+                create = versionCreate(type, args);
               }
         }
 
@@ -1911,7 +1905,6 @@ function read(backend, type) {
     var r = backend.r,
         connection = backend.connection,
         definition = backend.definition,
-        asError = backend.asError,
         _temporalExtension = backend._temporalExtension;
 
     // temporal plugin details
@@ -1933,17 +1926,17 @@ function read(backend, type) {
 
     var temporalMostCurrent = _.get(this, 'globals["' + _temporalExtension + '"].temporalMostCurrent');
     var collection = backend.getCollection(type);
-
-    // add the date argument to the rootValue
-    if (isVersioned) {
-      _.set(info, 'rootValue["' + _temporalExtension + '"].date', args.date);
-    }
+    var fnPath = 'backend_read' + type;
 
     var _getRelationFilter$ca = getRelationFilter.call(this, backend, type, source, info, collection),
         filter = _getRelationFilter$ca.filter,
         many = _getRelationFilter$ca.many;
 
-    var fnPath = 'backend_read' + type;
+    // add the date argument to the rootValue if not nested, otherwise pull it from the rootValue
+
+
+    if (isVersioned && !nested) _.set(info, 'rootValue["' + _temporalExtension + '"].date', args.date);
+    args.date = args.data || _.get(info, 'rootValue["' + _temporalExtension + '"].date');
 
     // handle basic read
     return new Promise$1(function (resolve, reject) {
@@ -1988,17 +1981,15 @@ function read(backend, type) {
           }
         }
 
+        // compose a filter from the arguments
         filter = getArgsFilter(backend, type, args, filter);
 
         // add standard query modifiers
-        if (_.isNumber(args.limit)) filter = filter.limit(args.limit);
+        filter = _.isNumber(args.limit) ? filter.limit(args.limit) : filter;
 
         // if not a many relation, return only a single result or null
-        if (!many) {
-          filter = filter.coerceTo('array').do(function (objs) {
-            return objs.count().eq(0).branch(r.expr(null), r.expr(objs).nth(0));
-          });
-        }
+        // otherwise an array of results
+        filter = many ? filter.coerceTo('ARRAY') : filter.nth(0).default(null);
 
         return filter.run(connection).then(function (result) {
           return afterHook.call(_this, result, hookArgs, backend, function (error, result) {
@@ -2105,7 +2096,7 @@ var _updateResolver = function (backend, type) {
                 if (!_.isFunction(versionUpdate)) {
                   return errorHook(new Error('could not find "temporalUpdate" in globals'), hookArgs, backend, reject);
                 }
-                update = batchMode ? versionUpdate(type, args).coerceTo('ARRAY') : versionUpdate(type, args).coerceTo('ARRAY').nth(0);
+                update = versionUpdate(type, args);
               }
         }
 
@@ -2321,7 +2312,7 @@ function subscriptionEvent(name) {
   }
 }
 
-function subscribe$1(backend, type) {
+function subscribe(backend, type) {
   return function (source, args) {
     var _this = this;
 
@@ -2444,7 +2435,7 @@ function subscribe$1(backend, type) {
   };
 }
 
-function unsubscribe$1(backend, type) {
+function unsubscribe(backend, type) {
   return function (source, args) {
     var _this = this;
 
@@ -2501,7 +2492,7 @@ function createTable(dbc, name, primaryKey) {
   });
 }
 
-function initStore$1(type, rebuild, seedData) {
+function initStore(type, rebuild, seedData) {
   var r = this.r,
       connection = this.connection;
 
@@ -2763,8 +2754,8 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
     }
   }, {
     key: 'initStore',
-    value: function initStore(type, rebuild, seedData) {
-      return initStore$1.call(this, type, rebuild, seedData);
+    value: function initStore$$1(type, rebuild, seedData) {
+      return initStore.call(this, type, rebuild, seedData);
     }
 
     /**
@@ -2901,17 +2892,25 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
   }, {
     key: 'subscribeResolver',
     value: function subscribeResolver(type) {
-      return subscribe$1(this, type);
+      return subscribe(this, type);
     }
   }, {
     key: 'unsubscribeResolver',
     value: function unsubscribeResolver(type) {
-      return unsubscribe$1(this, type);
+      return unsubscribe(this, type);
     }
   }]);
   return GraphQLFactoryRethinkDBBackend;
 }(GraphQLFactoryBaseBackend);
 
+/**
+ * @module graphql-factory-backend
+ * @description graphql-factory extension that creates generic resolver functions that handle
+ * nested relationships, unique constraints, and basic crud operations as well as
+ * subscriptions. Also serves as an extendable class
+ * @author Branden Horiuchi <bhoriuchi@gmail.com>
+ *
+ */
 var index = {
   GraphQLFactoryBaseBackend: GraphQLFactoryBaseBackend,
   GraphQLFactoryRethinkDBBackend: GraphQLFactoryRethinkDBBackend,

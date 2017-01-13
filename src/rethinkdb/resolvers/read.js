@@ -4,7 +4,7 @@ import { getRelationFilter, getArgsFilter } from '../common/filter'
 
 export default function read (backend, type) {
   return function (source, args, context = {}, info) {
-    let { r, connection, definition, asError, _temporalExtension } = backend
+    let { r, connection, definition, _temporalExtension } = backend
 
     // temporal plugin details
     let temporalDef = _.get(definition, `types["${type}"]["${_temporalExtension}"]`, {})
@@ -15,14 +15,12 @@ export default function read (backend, type) {
     let { before, after, error, timeout, nested } = backend.getTypeInfo(type, info)
     let temporalMostCurrent = _.get(this, `globals["${_temporalExtension}"].temporalMostCurrent`)
     let collection = backend.getCollection(type)
-
-    // add the date argument to the rootValue
-    if (isVersioned) {
-      _.set(info, `rootValue["${_temporalExtension}"].date`, args.date)
-    }
-
-    let { filter, many } = getRelationFilter.call(this, backend, type, source, info, collection)
     let fnPath = `backend_read${type}`
+    let { filter, many } = getRelationFilter.call(this, backend, type, source, info, collection)
+
+    // add the date argument to the rootValue if not nested, otherwise pull it from the rootValue
+    if (isVersioned && !nested) _.set(info, `rootValue["${_temporalExtension}"].date`, args.date)
+    args.date = args.data || _.get(info, `rootValue["${_temporalExtension}"].date`)
 
     // handle basic read
     return new Promise((resolve, reject) => {
@@ -76,17 +74,19 @@ export default function read (backend, type) {
           }
         }
 
+        // compose a filter from the arguments
         filter = getArgsFilter(backend, type, args, filter)
 
         // add standard query modifiers
-        if (_.isNumber(args.limit)) filter = filter.limit(args.limit)
+        filter = _.isNumber(args.limit)
+          ? filter.limit(args.limit)
+          : filter
 
         // if not a many relation, return only a single result or null
-        if (!many) {
-          filter = filter.coerceTo('array').do((objs) => {
-            return objs.count().eq(0).branch(r.expr(null), r.expr(objs).nth(0))
-          })
-        }
+        // otherwise an array of results
+        filter = many
+          ? filter.coerceTo('ARRAY')
+          : filter.nth(0).default(null)
 
         return filter.run(connection)
           .then((result) => {

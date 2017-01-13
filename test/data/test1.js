@@ -1,5 +1,3 @@
-import _ from 'lodash'
-
 export default {
   definition: {
     types: {
@@ -61,27 +59,40 @@ export default {
   },
   functionNames: [
     'backend_createPerson',
-    'backend_readPerson',
-    'backend_updatePerson',
-    'backend_deletePerson',
     'backend_createPet',
+    'backend_readPerson',
     'backend_readPet',
+    'backend_updatePerson',
     'backend_updatePet',
-    'backend_deletePet'
+    'backend_deletePerson',
+    'backend_deletePet',
+    'backend_batchCreatePerson',
+    'backend_batchCreatePet',
+    'backend_batchUpdatePerson',
+    'backend_batchUpdatePet',
+    'backend_batchDeletePerson',
+    'backend_batchDeletePet',
+    'backend_subscribePerson',
+    'backend_subscribePet',
+    'backend_unsubscribePerson',
+    'backend_unsubscribePet',
   ],
   compiled: {
     schemas: {
       "All": {
         "query": "backendAllQuery",
-        "mutation": "backendAllMutation"
+        "mutation": "backendAllMutation",
+        "subscription": "backendAllSubscription"
       },
       "People": {
         "query": "backendPeopleQuery",
-        "mutation": "backendPeopleMutation"
+        "mutation": "backendPeopleMutation",
+        "subscription": "backendPeopleSubscription"
       },
       "Pets": {
         "query": "backendPetsQuery",
-        "mutation": "backendPetsMutation"
+        "mutation": "backendPetsMutation",
+        "subscription": "backendPetsSubscription"
       }
     },
     types (types) {
@@ -116,12 +127,8 @@ export default {
               "primary": "id",
               "primaryKey": "id",
               "uniques": [],
-              "before": {
-                "backend_createPerson": _.get(types, 'Person._backend.computed.before.backend_createPerson'),
-                "backend_deletePerson": _.get(types, 'Person._backend.computed.before.backend_deletePerson'),
-                "backend_readPerson": _.get(types, 'Person._backend.computed.before.backend_readPerson'),
-                "backend_updatePerson": _.get(types, 'Person._backend.computed.before.backend_updatePerson')
-              }
+              "before": {},
+              "after": {}
             }
           }
         },
@@ -155,12 +162,8 @@ export default {
               "primary": "id",
               "primaryKey": "id",
               "uniques": [],
-              "before": {
-                "backend_createPet": _.get(types, 'Pet._backend.computed.before.backend_createPet'),
-                "backend_deletePet": _.get(types, 'Pet._backend.computed.before.backend_deletePet'),
-                "backend_readPet": _.get(types, 'Pet._backend.computed.before.backend_readPet'),
-                "backend_updatePet": _.get(types, 'Pet._backend.computed.before.backend_updatePet')
-              }
+              "before": {},
+              "after": {}
             }
           }
         },
@@ -221,6 +224,152 @@ export default {
             }
           }
         },
+        "GraphQLFactoryUnsubscribeResponse": {
+          "type": "Object",
+          "fields": {
+            "unsubscribed": {
+              "type": "Boolean",
+              "nullable": false
+            }
+          }
+        },
+        "backendCreatePersonInput": {
+          "type": "Input",
+          "fields": {
+            "id": {
+              "type": "String",
+              "nullable": true
+            },
+            "name": {
+              "type": "String",
+              "nullable": true
+            },
+            "address": {
+              "type": "backendCreateAddressInput",
+              "nullable": true
+            }
+          }
+        },
+        "backendUpdatePersonInput": {
+          "type": "Input",
+          "fields": {
+            "id": {
+              "type": "String",
+              "nullable": false
+            },
+            "name": {
+              "type": "String"
+            },
+            "address": {
+              "type": "backendUpdateAddressInput"
+            }
+          }
+        },
+        "backendDeletePersonInput": {
+          "type": "Input",
+          "fields": {
+            "id": {
+              "type": "String",
+              "nullable": false
+            }
+          }
+        },
+        "backendCreatePetInput": {
+          "type": "Input",
+          "fields": {
+            "id": {
+              "type": "String",
+              "nullable": true
+            },
+            "name": {
+              "type": "String",
+              "nullable": true
+            },
+            "type": {
+              "type": "PetTypeEnum",
+              "nullable": true
+            }
+          }
+        },
+        "backendUpdatePetInput": {
+          "type": "Input",
+          "fields": {
+            "id": {
+              "type": "String",
+              "nullable": false
+            },
+            "name": {
+              "type": "String"
+            },
+            "type": {
+              "type": "PetTypeEnum"
+            }
+          }
+        },
+        "backendDeletePetInput": {
+          "type": "Input",
+          "fields": {
+            "id": {
+              "type": "String",
+              "nullable": false
+            }
+          }
+        },
+        "backendCreateAddressInput": {
+          "type": "Input",
+          "fields": {
+            "street": {
+              "type": "String",
+              "nullable": true
+            },
+            "city": {
+              "type": "String",
+              "nullable": true
+            },
+            "state": {
+              "type": "String",
+              "nullable": true
+            },
+            "zipcode": {
+              "type": "Int",
+              "nullable": true
+            }
+          }
+        },
+        "backendUpdateAddressInput": {
+          "type": "Input",
+          "fields": {
+            "street": {
+              "type": "String"
+            },
+            "city": {
+              "type": "String"
+            },
+            "state": {
+              "type": "String"
+            },
+            "zipcode": {
+              "type": "Int"
+            }
+          }
+        },
+        "backendCreateGraphQLFactoryUnsubscribeResponseInput": {
+          "type": "Input",
+          "fields": {
+            "unsubscribed": {
+              "type": "Boolean",
+              "nullable": false
+            }
+          }
+        },
+        "backendUpdateGraphQLFactoryUnsubscribeResponseInput": {
+          "type": "Input",
+          "fields": {
+            "unsubscribed": {
+              "type": "Boolean"
+            }
+          }
+        },
         "backendAllQuery": {
           "fields": {
             "readPerson": {
@@ -236,9 +385,6 @@ export default {
                 },
                 "name": {
                   "type": "String"
-                },
-                "address": {
-                  "type": "Address"
                 }
               },
               "resolve": "backend_readPerson"
@@ -280,9 +426,6 @@ export default {
                 },
                 "name": {
                   "type": "String"
-                },
-                "address": {
-                  "type": "Address"
                 }
               },
               "resolve": "backend_readPerson"
@@ -316,9 +459,7 @@ export default {
         "backendAllMutation": {
           "fields": {
             "createPerson": {
-              "type": [
-                "Person"
-              ],
+              "type": "Person",
               "args": {
                 "id": {
                   "type": "String"
@@ -327,15 +468,13 @@ export default {
                   "type": "String"
                 },
                 "address": {
-                  "type": "AddressInput"
+                  "type": "backendCreateAddressInput"
                 }
               },
               "resolve": "backend_createPerson"
             },
             "updatePerson": {
-              "type": [
-                "Person"
-              ],
+              "type": "Person",
               "args": {
                 "id": {
                   "type": "String"
@@ -344,30 +483,62 @@ export default {
                   "type": "String"
                 },
                 "address": {
-                  "type": "AddressInput"
+                  "type": "backendUpdateAddressInput"
                 }
               },
               "resolve": "backend_updatePerson"
             },
             "deletePerson": {
-              "type": "Boolean",
+              "type": "Int",
               "args": {
                 "id": {
                   "type": "String"
-                },
-                "name": {
-                  "type": "String"
-                },
-                "address": {
-                  "type": "AddressInput"
                 }
               },
               "resolve": "backend_deletePerson"
             },
-            "createPet": {
+            "batchCreatePerson": {
               "type": [
-                "Pet"
+                "Person"
               ],
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendCreatePersonInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchCreatePerson"
+            },
+            "batchUpdatePerson": {
+              "type": [
+                "Person"
+              ],
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendUpdatePersonInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchUpdatePerson"
+            },
+            "batchDeletePerson": {
+              "type": "Int",
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendDeletePersonInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchDeletePerson"
+            },
+            "createPet": {
+              "type": "Pet",
               "args": {
                 "id": {
                   "type": "String"
@@ -382,9 +553,7 @@ export default {
               "resolve": "backend_createPet"
             },
             "updatePet": {
-              "type": [
-                "Pet"
-              ],
+              "type": "Pet",
               "args": {
                 "id": {
                   "type": "String"
@@ -399,28 +568,60 @@ export default {
               "resolve": "backend_updatePet"
             },
             "deletePet": {
-              "type": "Boolean",
+              "type": "Int",
               "args": {
                 "id": {
                   "type": "String"
-                },
-                "name": {
-                  "type": "String"
-                },
-                "type": {
-                  "type": "PetTypeEnum"
                 }
               },
               "resolve": "backend_deletePet"
+            },
+            "batchCreatePet": {
+              "type": [
+                "Pet"
+              ],
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendCreatePetInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchCreatePet"
+            },
+            "batchUpdatePet": {
+              "type": [
+                "Pet"
+              ],
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendUpdatePetInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchUpdatePet"
+            },
+            "batchDeletePet": {
+              "type": "Int",
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendDeletePetInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchDeletePet"
             }
           }
         },
         "backendPeopleMutation": {
           "fields": {
             "createPerson": {
-              "type": [
-                "Person"
-              ],
+              "type": "Person",
               "args": {
                 "id": {
                   "type": "String"
@@ -429,15 +630,13 @@ export default {
                   "type": "String"
                 },
                 "address": {
-                  "type": "AddressInput"
+                  "type": "backendCreateAddressInput"
                 }
               },
               "resolve": "backend_createPerson"
             },
             "updatePerson": {
-              "type": [
-                "Person"
-              ],
+              "type": "Person",
               "args": {
                 "id": {
                   "type": "String"
@@ -446,34 +645,66 @@ export default {
                   "type": "String"
                 },
                 "address": {
-                  "type": "AddressInput"
+                  "type": "backendUpdateAddressInput"
                 }
               },
               "resolve": "backend_updatePerson"
             },
             "deletePerson": {
-              "type": "Boolean",
+              "type": "Int",
               "args": {
                 "id": {
                   "type": "String"
-                },
-                "name": {
-                  "type": "String"
-                },
-                "address": {
-                  "type": "AddressInput"
                 }
               },
               "resolve": "backend_deletePerson"
+            },
+            "batchCreatePerson": {
+              "type": [
+                "Person"
+              ],
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendCreatePersonInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchCreatePerson"
+            },
+            "batchUpdatePerson": {
+              "type": [
+                "Person"
+              ],
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendUpdatePersonInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchUpdatePerson"
+            },
+            "batchDeletePerson": {
+              "type": "Int",
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendDeletePersonInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchDeletePerson"
             }
           }
         },
         "backendPetsMutation": {
           "fields": {
             "createPet": {
-              "type": [
-                "Pet"
-              ],
+              "type": "Pet",
               "args": {
                 "id": {
                   "type": "String"
@@ -488,9 +719,7 @@ export default {
               "resolve": "backend_createPet"
             },
             "updatePet": {
-              "type": [
-                "Pet"
-              ],
+              "type": "Pet",
               "args": {
                 "id": {
                   "type": "String"
@@ -505,7 +734,97 @@ export default {
               "resolve": "backend_updatePet"
             },
             "deletePet": {
-              "type": "Boolean",
+              "type": "Int",
+              "args": {
+                "id": {
+                  "type": "String"
+                }
+              },
+              "resolve": "backend_deletePet"
+            },
+            "batchCreatePet": {
+              "type": [
+                "Pet"
+              ],
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendCreatePetInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchCreatePet"
+            },
+            "batchUpdatePet": {
+              "type": [
+                "Pet"
+              ],
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendUpdatePetInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchUpdatePet"
+            },
+            "batchDeletePet": {
+              "type": "Int",
+              "args": {
+                "batch": {
+                  "type": [
+                    "backendDeletePetInput"
+                  ],
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_batchDeletePet"
+            }
+          }
+        },
+        "backendAllSubscription": {
+          "fields": {
+            "subscribePerson": {
+              "type": [
+                "Person"
+              ],
+              "args": {
+                "id": {
+                  "type": "String"
+                },
+                "limit": {
+                  "type": "Int"
+                },
+                "name": {
+                  "type": "String"
+                },
+                "subscriber": {
+                  "type": "String",
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_subscribePerson"
+            },
+            "unsubscribePerson": {
+              "type": "GraphQLFactoryUnsubscribeResponse",
+              "args": {
+                "subscription": {
+                  "type": "String",
+                  "nullable": false
+                },
+                "subscriber": {
+                  "type": "String",
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_unsubscribePerson"
+            },
+            "subscribePet": {
+              "type": [
+                "Pet"
+              ],
               "args": {
                 "id": {
                   "type": "String"
@@ -515,9 +834,111 @@ export default {
                 },
                 "type": {
                   "type": "PetTypeEnum"
+                },
+                "limit": {
+                  "type": "Int"
+                },
+                "subscriber": {
+                  "type": "String",
+                  "nullable": false
                 }
               },
-              "resolve": "backend_deletePet"
+              "resolve": "backend_subscribePet"
+            },
+            "unsubscribePet": {
+              "type": "GraphQLFactoryUnsubscribeResponse",
+              "args": {
+                "subscription": {
+                  "type": "String",
+                  "nullable": false
+                },
+                "subscriber": {
+                  "type": "String",
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_unsubscribePet"
+            }
+          }
+        },
+        "backendPeopleSubscription": {
+          "fields": {
+            "subscribePerson": {
+              "type": [
+                "Person"
+              ],
+              "args": {
+                "id": {
+                  "type": "String"
+                },
+                "name": {
+                  "type": "String"
+                },
+                "limit": {
+                  "type": "Int"
+                },
+                "subscriber": {
+                  "type": "String",
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_subscribePerson"
+            },
+            "unsubscribePerson": {
+              "type": "GraphQLFactoryUnsubscribeResponse",
+              "args": {
+                "subscription": {
+                  "type": "String",
+                  "nullable": false
+                },
+                "subscriber": {
+                  "type": "String",
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_unsubscribePerson"
+            }
+          }
+        },
+        "backendPetsSubscription": {
+          "fields": {
+            "subscribePet": {
+              "type": [
+                "Pet"
+              ],
+              "args": {
+                "id": {
+                  "type": "String"
+                },
+                "name": {
+                  "type": "String"
+                },
+                "type": {
+                  "type": "PetTypeEnum"
+                },
+                "limit": {
+                  "type": "Int"
+                },
+                "subscriber": {
+                  "type": "String",
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_subscribePet"
+            },
+            "unsubscribePet": {
+              "type": "GraphQLFactoryUnsubscribeResponse",
+              "args": {
+                "subscription": {
+                  "type": "String",
+                  "nullable": false
+                },
+                "subscriber": {
+                  "type": "String",
+                  "nullable": false
+                }
+              },
+              "resolve": "backend_unsubscribePet"
             }
           }
         }

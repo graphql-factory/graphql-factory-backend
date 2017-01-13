@@ -84,9 +84,7 @@ export default function create (backend, type, batchMode = false) {
                 reject
               )
             }
-            create = batchMode
-              ? versionCreate(type, args).coerceTo('ARRAY')
-              : versionCreate(type, args).coerceTo('ARRAY').nth(0)
+            create = versionCreate(type, args)
           }
         }
 

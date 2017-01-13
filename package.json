@@ -15,7 +15,8 @@
     "build:backend": "npm run build:copybrc && rollup -c build/rollup.backend.config.js && npm run build:rmbrc",
     "build:util": "npm run build:copybrc && rollup -c build/rollup.util.config.js && npm run build:rmbrc",
     "build": "npm run build:backend && npm run build:util",
-    "test": "mocha test/index.js"
+    "test:nobuild": "mocha test/index.js",
+    "test": "npm run build && mocha test/index.js"
   },
   "author": "Branden Horiuchi <bhoriuchi@gmail.com>",
   "dependencies": {
@@ -33,10 +34,11 @@
     "babel-register": "^6.18.0",
     "graphql": "^0.8.0",
     "graphql-factory": "git+https://github.com/graphql-factory/graphql-factory.git#development",
+    "graphql-factory-temporal": "git+https://github.com/graphql-factory/graphql-factory-temporal.git#batch_support",
     "mocha": "^3.0.0",
     "rethinkdb": "^2.3.3",
     "rethinkdbdash": "^2.3.27",
-    "rollup": "^0.37.0",
+    "rollup": "^0.41.0",
     "rollup-plugin-babel": "^2.7.0",
     "babel-preset-es2015-rollup": "^3.0.0"
   },
