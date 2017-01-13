@@ -2066,7 +2066,7 @@ function read(backend, type) {
       var beforeHook = _.get(before, fnPath);
       var afterHook = _.get(after, fnPath);
       var errorHook = _.get(error, fnPath);
-      var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
+      var hookArgs = { source: source, args: args, context: context, info: info };
 
       return backend.beforeMiddleware(_this, beforeHook, hookArgs, backend, function (error) {
         if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
@@ -2467,7 +2467,7 @@ function subscribe(backend, type) {
       var beforeHook = _.get(before, fnPath);
       var afterHook = _.get(after, fnPath);
       var errorHook = _.get(error, fnPath);
-      var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
+      var hookArgs = { source: source, args: args, context: context, info: info };
 
       return backend.beforeMiddleware(_this, beforeHook, hookArgs, backend, function (error) {
         if (error) return backend.errorMiddleware(_this, errorHook, error, hookArgs, backend, reject);
@@ -2555,7 +2555,7 @@ function unsubscribe(backend, type) {
       var beforeHook = _.get(before, fnPath);
       var afterHook = _.get(after, fnPath);
       var errorHook = _.get(error, fnPath);
-      var hookArgs = { source: source, args: batchMode ? args : _.first(args), context: context, info: info };
+      var hookArgs = { source: source, args: args, context: context, info: info };
       var result = { unsubscribed: true };
 
       return backend.beforeMiddleware(_this, beforeHook, hookArgs, backend, function (error) {

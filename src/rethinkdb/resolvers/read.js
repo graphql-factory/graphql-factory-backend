@@ -27,7 +27,7 @@ export default function read (backend, type) {
       let beforeHook = _.get(before, fnPath)
       let afterHook = _.get(after, fnPath)
       let errorHook = _.get(error, fnPath)
-      let hookArgs = { source, args: batchMode ? args : _.first(args), context, info }
+      let hookArgs = { source, args, context, info }
 
       return backend.beforeMiddleware(this, beforeHook, hookArgs, backend, (error) => {
         if (error) return backend.errorMiddleware(this, errorHook, error, hookArgs, backend, reject)

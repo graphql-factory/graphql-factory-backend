@@ -11,7 +11,7 @@ export default function unsubscribe (backend, type) {
       let beforeHook = _.get(before, fnPath)
       let afterHook = _.get(after, fnPath)
       let errorHook = _.get(error, fnPath)
-      let hookArgs = { source, args: batchMode ? args : _.first(args), context, info }
+      let hookArgs = { source, args, context, info }
       let result = { unsubscribed: true }
 
       return backend.beforeMiddleware(this, beforeHook, hookArgs, backend, (error) => {
