@@ -248,12 +248,15 @@ export default class GraphQLFactoryBaseBackend extends Events {
    * @param callback
    */
   make (callback = () => true) {
+    this.logger.info({ stream: 'backend' }, 'making backend')
     return new Promise((resolve, reject) => {
       try {
         this._compile()
+        this.logger.info({ stream: 'backend' }, 'successfully made backend')
         callback(null, this)
         return resolve(this)
       } catch (error) {
+        this.logger.error({ stream: 'backend', error }, 'failed to make backend')
         callback(error)
         return reject(error)
       }

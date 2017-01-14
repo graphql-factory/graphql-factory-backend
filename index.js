@@ -1455,12 +1455,15 @@ var GraphQLFactoryBaseBackend = function (_Events) {
         return true;
       };
 
+      this.logger.info({ stream: 'backend' }, 'making backend');
       return new Promise$1(function (resolve, reject) {
         try {
           _this2._compile();
+          _this2.logger.info({ stream: 'backend' }, 'successfully made backend');
           callback(null, _this2);
           return resolve(_this2);
         } catch (error) {
+          _this2.logger.error({ stream: 'backend', error: error }, 'failed to make backend');
           callback(error);
           return reject(error);
         }
@@ -3096,15 +3099,19 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
     value: function make(callback) {
       var _this3 = this;
 
+      this.logger.info({ stream: 'backend' }, 'making backend');
       return this._connectDatabase().then(function () {
         try {
           _this3._compile();
+          _this3.logger.info({ stream: 'backend' }, 'successfully made backend');
           callback(null, _this3);
           return _this3;
         } catch (error) {
+          _this3.logger.error({ stream: 'backend', error: error }, 'failed to make backend');
           callback(error);
         }
       }).catch(function (error) {
+        _this3.logger.error({ stream: 'backend', error: error }, 'failed to make backend');
         callback(error);
         return Promise.reject(error);
       });

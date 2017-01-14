@@ -126,17 +126,21 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
    * @return {Promise.<TResult>}
    */
   make (callback) {
+    this.logger.info({ stream: 'backend' }, 'making backend')
     return this._connectDatabase()
       .then(() => {
         try {
           this._compile()
+          this.logger.info({ stream: 'backend' }, 'successfully made backend')
           callback(null, this)
           return this
         } catch (error) {
+          this.logger.error({ stream: 'backend', error }, 'failed to make backend')
           callback(error)
         }
       })
       .catch((error) => {
+        this.logger.error({ stream: 'backend', error }, 'failed to make backend')
         callback(error)
         return Promise.reject(error)
       })
