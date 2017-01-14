@@ -16,6 +16,7 @@ Here lies a summary of things that I would like to investigate and/or implement
 ### Logging
 
 * add ability to define log streams and integrate logging more tightly
+  * initial add done, requires testing
 
 ---
 

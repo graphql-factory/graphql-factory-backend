@@ -8,6 +8,7 @@ import Promise from 'bluebird'
 // local modules
 import FactoryBackendDefinition from '../graphql/index'
 import GraphQLFactoryBackendCompiler from './GraphQLFactoryBackendCompiler'
+import LogMiddleware from './LogMiddleware'
 
 /**
  * Base GraphQL Factory Backend
@@ -25,6 +26,9 @@ export default class GraphQLFactoryBaseBackend extends Events {
    * @param {Object} [config.options] - options hash
    * @param {String} [config.options.store="test"] - default store name
    * @param {String} [config.options.prefix=""] - prefix for collections
+   * @param {Object} [config.options.log] - array of log settings
+   * @param {Object} [config.options.log[stream].handler] - log handler like bunyan for backend logs
+   * @param {Number|String} [config.options.log[stream].level] - log level for backend logs
    * @param {Array<String>|String} [config.plugin] - additional plugins to merge
    * @param {String} [config.temporalExtension="_temporal"] - temporal plugin extension
    * @param {Object} [config.globals] - Factory globals definition
@@ -81,6 +85,13 @@ export default class GraphQLFactoryBaseBackend extends Events {
 
     // add the backend to the globals
     _.set(this.definition, `globals["${this._extension}"]`, this)
+
+    // add logger and streams
+    this.logger = new LogMiddleware()
+    _.forEach(_.get(config, 'options.log'), (options, stream) => {
+      let { level, handler } = options || { level: 'info' }
+      this.logger.addStream(stream, level, handler)
+    })
   }
 
   /**

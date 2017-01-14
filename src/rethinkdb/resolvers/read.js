@@ -17,10 +17,17 @@ export default function read (backend, type) {
     let collection = backend.getCollection(type)
     let fnPath = `backend_read${type}`
     let { filter, many } = getRelationFilter.call(this, backend, type, source, info, collection)
+    let rootDate = _.get(info, `rootValue["${_temporalExtension}"].date`)
 
     // add the date argument to the rootValue if not nested, otherwise pull it from the rootValue
     if (isVersioned && !nested) _.set(info, `rootValue["${_temporalExtension}"].date`, args.date)
-    args.date = args.data || _.get(info, `rootValue["${_temporalExtension}"].date`)
+    let dateArg = (args.date !== undefined)
+      ? args.date
+      : (rootDate !== undefined)
+        ? rootDate
+        : undefined
+
+    if (dateArg !== undefined) args.date = dateArg
 
     // handle basic read
     return new Promise((resolve, reject) => {
@@ -60,7 +67,17 @@ export default function read (backend, type) {
             }
             return resolve(temporalRead.call(this, source, args, context, info))
           } else {
-            if (!_.keys(args).length && readMostCurrent === true) {
+            if (_.isEmpty(args) && readMostCurrent === true) {
+              if (!_.isFunction(temporalMostCurrent)) {
+                return backend.errorMiddleware(
+                  this,
+                  errorHook,
+                  new Error('could not find "temporalMostCurrent" in globals'),
+                  hookArgs,
+                  backend,
+                  reject
+                )
+              }
               filter = temporalMostCurrent(type)
             } else {
               let versionFilter = _.get(this, `globals["${_temporalExtension}"].temporalFilter`)
@@ -68,7 +85,7 @@ export default function read (backend, type) {
                 return backend.errorMiddleware(
                   this,
                   errorHook,
-                  new Error(`could not find "temporalFilter" in globals`),
+                  new Error('could not find "temporalFilter" in globals'),
                   hookArgs,
                   backend,
                   reject

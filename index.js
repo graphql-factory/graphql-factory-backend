@@ -1026,6 +1026,170 @@ var GraphQLFactoryBackendCompiler = function () {
   return GraphQLFactoryBackendCompiler;
 }();
 
+var _LOG_LEVELS;
+
+var FATAL = 'fatal';
+var ERROR = 'error';
+var WARN = 'warn';
+var INFO = 'info';
+var DEBUG = 'debug';
+var TRACE = 'trace';
+var SILENT = 'silent';
+
+
+
+var LOG_LEVELS = (_LOG_LEVELS = {}, defineProperty(_LOG_LEVELS, FATAL, 60), defineProperty(_LOG_LEVELS, ERROR, 50), defineProperty(_LOG_LEVELS, WARN, 40), defineProperty(_LOG_LEVELS, INFO, 30), defineProperty(_LOG_LEVELS, DEBUG, 20), defineProperty(_LOG_LEVELS, TRACE, 10), defineProperty(_LOG_LEVELS, SILENT, -1), _LOG_LEVELS);
+
+var Logger = function () {
+  function Logger(middleware, stream) {
+    var level = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : INFO;
+    var handler = arguments[3];
+    classCallCheck(this, Logger);
+
+    this.middleware = middleware;
+    this.stream = stream;
+    this.handler = handler;
+    this.level = _.isNumber(level) ? Math.floor(level) : _.get(LOG_LEVELS, level);
+
+    if (!_.isNumber(this.level)) throw new Error('invalid log level');
+  }
+
+  createClass(Logger, [{
+    key: 'fatal',
+    value: function fatal() {
+      var level = FATAL;
+      if (this.level >= 0 && this.level <= LOG_LEVELS[level]) {
+        var log = this.middleware.logify(this.stream, LOG_LEVELS[level], [].concat(Array.prototype.slice.call(arguments)));
+        if (_.isFunction(_.get(this.handler, level))) return this.handler[level].apply(this.handler, log);
+        return console.error.apply(console, log);
+      }
+    }
+  }, {
+    key: 'error',
+    value: function error() {
+      var level = ERROR;
+      if (this.level >= 0 && this.level <= LOG_LEVELS[level]) {
+        var log = this.middleware.logify(this.stream, LOG_LEVELS[level], [].concat(Array.prototype.slice.call(arguments)));
+        if (_.isFunction(_.get(this.handler, level))) return this.handler[level].apply(this.handler, log);
+        return console.error.apply(console, log);
+      }
+    }
+  }, {
+    key: 'warn',
+    value: function warn() {
+      var level = WARN;
+      if (this.level >= 0 && this.level <= LOG_LEVELS[level]) {
+        var log = this.middleware.logify(this.stream, LOG_LEVELS[level], [].concat(Array.prototype.slice.call(arguments)));
+        if (_.isFunction(_.get(this.handler, level))) return this.handler[level].apply(this.handler, log);
+        return console.warn.apply(console, log);
+      }
+    }
+  }, {
+    key: 'info',
+    value: function info() {
+      var level = INFO;
+      if (this.level >= 0 && this.level <= LOG_LEVELS[level]) {
+        var log = this.middleware.logify(this.stream, LOG_LEVELS[level], [].concat(Array.prototype.slice.call(arguments)));
+        if (_.isFunction(_.get(this.handler, level))) return this.handler[level].apply(this.handler, log);
+        return console.info.apply(console, log);
+      }
+    }
+  }, {
+    key: 'debug',
+    value: function debug() {
+      var level = DEBUG;
+      if (this.level >= 0 && this.level <= LOG_LEVELS[level]) {
+        var log = this.middleware.logify(this.stream, LOG_LEVELS[level], [].concat(Array.prototype.slice.call(arguments)));
+        if (_.isFunction(_.get(this.handler, level))) return this.handler[level].apply(this.handler, log);
+        return console.log.apply(console, log);
+      }
+    }
+  }, {
+    key: 'trace',
+    value: function trace() {
+      var level = TRACE;
+      if (this.level >= 0 && this.level <= LOG_LEVELS[level]) {
+        var log = this.middleware.logify(this.stream, LOG_LEVELS[level], [].concat(Array.prototype.slice.call(arguments)));
+        if (_.isFunction(_.get(this.handler, level))) return this.handler[level].apply(this.handler, log);
+        return console.log.apply(console, log);
+      }
+    }
+  }]);
+  return Logger;
+}();
+
+var LogMiddleware = function () {
+  function LogMiddleware() {
+    classCallCheck(this, LogMiddleware);
+
+    this.streams = {};
+  }
+
+  createClass(LogMiddleware, [{
+    key: 'logify',
+    value: function logify(stream, level, args) {
+      var timestamp = new Date();
+      if (_.isObject(_.get(args, '[0]'))) {
+        args[0].level = level;
+        args[0].stream = stream;
+        args[0].timestamp = timestamp;
+      } else {
+        args = [{ level: level, stream: stream, timestamp: timestamp }].concat(args);
+      }
+      return args;
+    }
+  }, {
+    key: 'addStream',
+    value: function addStream(stream, level, handler) {
+      this.streams[stream] = new Logger(this, stream, level, handler);
+      return this.streams[stream];
+    }
+  }, {
+    key: 'fatal',
+    value: function fatal() {
+      var args = [].concat(Array.prototype.slice.call(arguments));
+      var stream = _.get(args, '[0].stream');
+      return _.has(this.streams, stream) ? this.streams[stream].fatal.apply(this.streams[stream], args) : null;
+    }
+  }, {
+    key: 'error',
+    value: function error() {
+      var args = [].concat(Array.prototype.slice.call(arguments));
+      var stream = _.get(args, '[0].stream');
+      return _.has(this.streams, stream) ? this.streams[stream].error.apply(this.streams[stream], args) : null;
+    }
+  }, {
+    key: 'warn',
+    value: function warn() {
+      var args = [].concat(Array.prototype.slice.call(arguments));
+      var stream = _.get(args, '[0].stream');
+      return _.has(this.streams, stream) ? this.streams[stream].warn.apply(this.streams[stream], args) : null;
+    }
+  }, {
+    key: 'info',
+    value: function info() {
+      var args = [].concat(Array.prototype.slice.call(arguments));
+      var stream = _.get(args, '[0].stream');
+      return _.has(this.streams, stream) ? this.streams[stream].info.apply(this.streams[stream], args) : null;
+    }
+  }, {
+    key: 'debug',
+    value: function debug() {
+      var args = [].concat(Array.prototype.slice.call(arguments));
+      var stream = _.get(args, '[0].stream');
+      return _.has(this.streams, stream) ? this.streams[stream].debug.apply(this.streams[stream], args) : null;
+    }
+  }, {
+    key: 'trace',
+    value: function trace() {
+      var args = [].concat(Array.prototype.slice.call(arguments));
+      var stream = _.get(args, '[0].stream');
+      return _.has(this.streams, stream) ? this.streams[stream].trace.apply(this.streams[stream], args) : null;
+    }
+  }]);
+  return LogMiddleware;
+}();
+
 // core modules
 // npm modules
 // local modules
@@ -1048,6 +1212,9 @@ var GraphQLFactoryBaseBackend = function (_Events) {
    * @param {Object} [config.options] - options hash
    * @param {String} [config.options.store="test"] - default store name
    * @param {String} [config.options.prefix=""] - prefix for collections
+   * @param {Object} [config.options.log] - array of log settings
+   * @param {Object} [config.options.log[stream].handler] - log handler like bunyan for backend logs
+   * @param {Number|String} [config.options.log[stream].level] - log level for backend logs
    * @param {Array<String>|String} [config.plugin] - additional plugins to merge
    * @param {String} [config.temporalExtension="_temporal"] - temporal plugin extension
    * @param {Object} [config.globals] - Factory globals definition
@@ -1117,6 +1284,16 @@ var GraphQLFactoryBaseBackend = function (_Events) {
 
     // add the backend to the globals
     _.set(_this.definition, 'globals["' + _this._extension + '"]', _this);
+
+    // add logger and streams
+    _this.logger = new LogMiddleware();
+    _.forEach(_.get(config, 'options.log'), function (options, stream) {
+      var _ref2 = options || { level: 'info' },
+          level = _ref2.level,
+          handler = _ref2.handler;
+
+      _this.logger.addStream(stream, level, handler);
+    });
     return _this;
   }
 
@@ -1485,7 +1662,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
   }, {
     key: 'getTypeInfo',
     value: function getTypeInfo(type, info) {
-      var _ref2;
+      var _ref3;
 
       var typeDef = this.getTypeDefinition(type);
 
@@ -1506,7 +1683,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
           belongsTo = _getRelations.belongsTo,
           has = _getRelations.has;
 
-      return _ref2 = {}, defineProperty(_ref2, this._extension, typeDef[this._extension]), defineProperty(_ref2, 'before', before), defineProperty(_ref2, 'after', after), defineProperty(_ref2, 'error', error), defineProperty(_ref2, 'timeout', timeout), defineProperty(_ref2, 'collection', collection), defineProperty(_ref2, 'store', store), defineProperty(_ref2, 'fields', typeDef.fields), defineProperty(_ref2, 'primary', primary), defineProperty(_ref2, 'primaryKey', primaryKey), defineProperty(_ref2, 'nested', nested), defineProperty(_ref2, 'currentPath', currentPath), defineProperty(_ref2, 'belongsTo', belongsTo), defineProperty(_ref2, 'has', has), _ref2;
+      return _ref3 = {}, defineProperty(_ref3, this._extension, typeDef[this._extension]), defineProperty(_ref3, 'before', before), defineProperty(_ref3, 'after', after), defineProperty(_ref3, 'error', error), defineProperty(_ref3, 'timeout', timeout), defineProperty(_ref3, 'collection', collection), defineProperty(_ref3, 'store', store), defineProperty(_ref3, 'fields', typeDef.fields), defineProperty(_ref3, 'primary', primary), defineProperty(_ref3, 'primaryKey', primaryKey), defineProperty(_ref3, 'nested', nested), defineProperty(_ref3, 'currentPath', currentPath), defineProperty(_ref3, 'belongsTo', belongsTo), defineProperty(_ref3, 'has', has), _ref3;
     }
   }, {
     key: 'getRequestFields',
@@ -2055,11 +2232,13 @@ function read(backend, type) {
         filter = _getRelationFilter$ca.filter,
         many = _getRelationFilter$ca.many;
 
+    var rootDate = _.get(info, 'rootValue["' + _temporalExtension + '"].date');
+
     // add the date argument to the rootValue if not nested, otherwise pull it from the rootValue
-
-
     if (isVersioned && !nested) _.set(info, 'rootValue["' + _temporalExtension + '"].date', args.date);
-    args.date = args.data || _.get(info, 'rootValue["' + _temporalExtension + '"].date');
+    var dateArg = args.date !== undefined ? args.date : rootDate !== undefined ? rootDate : undefined;
+
+    if (dateArg !== undefined) args.date = dateArg;
 
     // handle basic read
     return new Promise$1(function (resolve, reject) {
@@ -2085,7 +2264,10 @@ function read(backend, type) {
             }
             return resolve(temporalRead.call(_this, source, args, context, info));
           } else {
-            if (!_.keys(args).length && readMostCurrent === true) {
+            if (_.isEmpty(args) && readMostCurrent === true) {
+              if (!_.isFunction(temporalMostCurrent)) {
+                return backend.errorMiddleware(_this, errorHook, new Error('could not find "temporalMostCurrent" in globals'), hookArgs, backend, reject);
+              }
               filter = temporalMostCurrent(type);
             } else {
               var versionFilter = _.get(_this, 'globals["' + _temporalExtension + '"].temporalFilter');
