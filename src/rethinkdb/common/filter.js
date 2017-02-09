@@ -188,38 +188,6 @@ export function existsFilter (backend, type, args) {
     .reduce((prev, cur) => prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null)))
 }
 
-function search (r, rec, search) {
-  _.forEach(search, (sub, operator) => {
-    switch (operator) {
-      case '$and':
-        return _.reduce(sub, (accum, cur) => {
-          accum.and(search(r, rec, cur))
-        }, rec)
-
-      default:
-        return rec(operator).default(null)
-    }
-  })
-}
-
-/**
- * creates a filter from a json/mongodb style search
- * @param backend
- * @param type
- * @param search
- * @param filter
- */
-export function searchFilter (backend, type, search, filter) {
-  filter = filter || backend.getCollection(type)
-  let { r } = backend
-
-  if (_.isEmpty(search)) return filter
-
-  return filter((rec) => {
-
-  })
-}
-
 export default {
   reqlPath,
   existsFilter,

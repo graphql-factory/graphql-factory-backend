@@ -77,6 +77,11 @@ export default class GraphQLFactoryBaseBackend extends Events {
     this._installData = installData || {}
     this._lib = null
     this._plugin = null
+    this._middleware = {
+      before: [],
+      after: [],
+      error: []
+    }
 
     // add the backend to the globals
     _.set(this.definition, `globals["${this._extension}"]`, this)
@@ -87,6 +92,18 @@ export default class GraphQLFactoryBaseBackend extends Events {
       let { level, handler } = options || { level: 'info' }
       this.logger.addStream(stream, level, handler)
     })
+  }
+
+  /**
+   * adds global middleware to all resolve functions
+   * @param hook
+   * @param middleware
+   */
+  use (hook, middleware) {
+    if (!_.includes(['before', 'after', 'error'], hook) || !_.isFunction(middleware)) {
+      throw new Error('invalid middleware, must be "use(hook:String, middleware:Function)"')
+    }
+    this._middleware[hook].push(middleware)
   }
 
   /**
@@ -108,6 +125,9 @@ export default class GraphQLFactoryBaseBackend extends Events {
       : _.isArray(hooks)
         ? _.filter(hooks, _.isFunction)
         : []
+
+    // add middleware
+    hooks = this._middleware.error.concat(hooks)
 
     // if there are no hooks call the done handler with the results
     if (!hooks.length) return done(error)
@@ -154,6 +174,9 @@ export default class GraphQLFactoryBaseBackend extends Events {
         ? _.filter(hooks, _.isFunction)
         : []
 
+    // add middleware
+    hooks = this._middleware.before.concat(hooks)
+
     // if there are no hooks call the done handler with the results
     if (!hooks.length) return done()
 
@@ -199,6 +222,9 @@ export default class GraphQLFactoryBaseBackend extends Events {
       : _.isArray(hooks)
         ? _.filter(hooks, _.isFunction)
         : []
+
+    // add middleware
+    hooks = this._middleware.after.concat(hooks)
 
     // if there are no hooks call the done handler with the results
     if (!hooks.length) return done(null, result)

@@ -1330,6 +1330,11 @@ var GraphQLFactoryBaseBackend = function (_Events) {
     _this._installData = installData || {};
     _this._lib = null;
     _this._plugin = null;
+    _this._middleware = {
+      before: [],
+      after: [],
+      error: []
+    };
 
     // add the backend to the globals
     _.set(_this.definition, 'globals["' + _this._extension + '"]', _this);
@@ -1347,24 +1352,42 @@ var GraphQLFactoryBaseBackend = function (_Events) {
   }
 
   /**
-   * Handles error middleware hooks
-   * @param {Object} context - resolve function context
-   * @param {Function|Array<Function>} hooks - middleware hooks
-   * @param {Error} error - error object
-   * @param {Object} args - arguments
-   * @param {Object} backend - factory backend
-   * @param {Function} done - reject function
-   * @returns {*}
+   * adds global middleware to all resolve functions
+   * @param hook
+   * @param middleware
    */
 
 
   createClass(GraphQLFactoryBaseBackend, [{
+    key: 'use',
+    value: function use(hook, middleware) {
+      if (!_.includes(['before', 'after', 'error'], hook) || !_.isFunction(middleware)) {
+        throw new Error('invalid middleware, must be "use(hook:String, middleware:Function)"');
+      }
+      this._middleware[hook].push(middleware);
+    }
+
+    /**
+     * Handles error middleware hooks
+     * @param {Object} context - resolve function context
+     * @param {Function|Array<Function>} hooks - middleware hooks
+     * @param {Error} error - error object
+     * @param {Object} args - arguments
+     * @param {Object} backend - factory backend
+     * @param {Function} done - reject function
+     * @returns {*}
+     */
+
+  }, {
     key: 'errorMiddleware',
     value: function errorMiddleware(context, hooks, error, args, backend, done) {
       var handlers = {};
 
       // ensure that all middleware hooks are functions
       hooks = _.isFunction(hooks) ? [hooks] : _.isArray(hooks) ? _.filter(hooks, _.isFunction) : [];
+
+      // add middleware
+      hooks = this._middleware.error.concat(hooks);
 
       // if there are no hooks call the done handler with the results
       if (!hooks.length) return done(error);
@@ -1408,6 +1431,9 @@ var GraphQLFactoryBaseBackend = function (_Events) {
       // ensure that all middleware hooks are functions
       hooks = _.isFunction(hooks) ? [hooks] : _.isArray(hooks) ? _.filter(hooks, _.isFunction) : [];
 
+      // add middleware
+      hooks = this._middleware.before.concat(hooks);
+
       // if there are no hooks call the done handler with the results
       if (!hooks.length) return done();
 
@@ -1450,6 +1476,9 @@ var GraphQLFactoryBaseBackend = function (_Events) {
 
       // ensure that all middleware hooks are functions
       hooks = _.isFunction(hooks) ? [hooks] : _.isArray(hooks) ? _.filter(hooks, _.isFunction) : [];
+
+      // add middleware
+      hooks = this._middleware.after.concat(hooks);
 
       // if there are no hooks call the done handler with the results
       if (!hooks.length) return done(null, result);
@@ -2131,15 +2160,6 @@ function existsFilter(backend, type, args) {
     return prev.and(r.db(cur('store')).table(cur('collection')).get(cur('id')).ne(null));
   });
 }
-
-/**
- * creates a filter from a json/mongodb style search
- * @param backend
- * @param type
- * @param search
- * @param filter
- */
-
 
 var filter = {
   reqlPath: reqlPath,
