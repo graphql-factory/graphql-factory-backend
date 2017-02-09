@@ -1533,6 +1533,9 @@ var GraphQLFactoryBaseBackend = function (_Events) {
         return true;
       };
 
+      callback = _.isFunction(callback) ? callback : function () {
+        return false;
+      };
       this.logger.info({ stream: 'backend' }, 'making backend');
       return new Promise$1(function (resolve, reject) {
         try {
