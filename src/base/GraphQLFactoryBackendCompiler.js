@@ -825,13 +825,19 @@ export default class GraphQLFactoryBackendCompiler {
 
     // if a query, copy a create without its nullables and add an overridable limit
     if (operation === QUERY) {
-      return _.merge({ limit: { type: 'Int' } }, this.queryArgs[rootName])
+      return _.merge({
+        limit: { type: 'Int' },
+        search: { type: 'GraphQLFactoryJSON' }
+      }, this.queryArgs[rootName])
     }
 
     // if a subscription, cope a create without its nullables and add a subscriber
     if (operation === SUBSCRIPTION && opName === SUBSCRIBE) {
       return _.merge(
-        { limit: { type: 'Int' } },
+        {
+          limit: { type: 'Int' },
+          search: { type: 'GraphQLFactoryJSON' }
+        },
         this.queryArgs[rootName],
         { subscriber: { type: 'String', nullable: false } }
       )

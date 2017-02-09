@@ -1,14 +1,9 @@
-// core modules
-import Events from 'events'
-
-// npm modules
 import _ from 'lodash'
-import Promise from 'bluebird'
-
-// local modules
+import Events from 'events'
 import FactoryBackendDefinition from '../graphql/index'
 import GraphQLFactoryBackendCompiler from './GraphQLFactoryBackendCompiler'
 import LogMiddleware from './LogMiddleware'
+import Promise from 'bluebird'
 
 /**
  * Base GraphQL Factory Backend

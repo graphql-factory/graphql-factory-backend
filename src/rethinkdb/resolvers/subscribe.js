@@ -1,6 +1,5 @@
 import _ from 'lodash'
 import Promise from 'bluebird'
-import * as graphql from 'graphql'
 import { SUBSCRIBE } from '../../base/GraphQLFactoryBackendCompiler'
 import { subscriptionEvent, subscriptionArguments } from '../../common/index'
 import { getRelationFilter, getArgsFilter } from '../common/filter'
@@ -82,8 +81,8 @@ export default function subscribe (backend, type) {
                 filter,
                 {
                   schema: info.schema,
-                  requestString: graphql.print({
-                    kind: graphql.Kind.DOCUMENT,
+                  requestString: backend.graphql.print({
+                    kind: backend.graphql.Kind.DOCUMENT,
                     definitions: [info.operation]
                   }),
                   rootValue: info.rootValue,

@@ -16,13 +16,15 @@
     "build:util": "npm run build:copybrc && rollup -c build/rollup.util.config.js && npm run build:rmbrc",
     "build": "npm run build:backend && npm run build:util",
     "test:nobuild": "mocha test/index.js",
-    "test": "npm run build && mocha test/index.js"
+    "test": "npm run build && mocha test/index.js",
+    "copyfactory": "cp ../graphql-factory/*.js node_modules/graphql-factory/"
   },
   "author": "Branden Horiuchi <bhoriuchi@gmail.com>",
   "dependencies": {
     "bluebird": "^3.4.6",
+    "js-md5": "^0.4.1",
     "lodash": "^4.17.2",
-    "js-md5": "^0.4.1"
+    "rethinkdb-doc-filter": "^0.1.0"
   },
   "devDependencies": {
     "chai": "^3.5.0",
@@ -33,7 +35,7 @@
     "babel-runtime": "^6.20.0",
     "babel-register": "^6.18.0",
     "graphql": "^0.8.0",
-    "graphql-factory": "git+https://github.com/graphql-factory/graphql-factory.git#development",
+    "graphql-factory": "git+https://github.com/graphql-factory/graphql-factory.git#master",
     "graphql-factory-temporal": "git+https://github.com/graphql-factory/graphql-factory-temporal.git#batch_support",
     "mocha": "^3.0.0",
     "rethinkdb": "^2.3.3",

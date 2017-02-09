@@ -1,5 +1,6 @@
 import _ from 'lodash'
 import Promise from 'bluebird'
+import docFilter from 'rethinkdb-doc-filter'
 import { getRelationFilter, getArgsFilter } from '../common/filter'
 
 export default function read (backend, type) {
@@ -14,7 +15,9 @@ export default function read (backend, type) {
     // type details
     let { before, after, error, timeout, nested } = backend.getTypeInfo(type, info)
     let temporalMostCurrent = _.get(this, `globals["${_temporalExtension}"].temporalMostCurrent`)
-    let collection = backend.getCollection(type)
+    let collection = args.search
+      ? docFilter(r, backend.getCollection(type), args.search)
+      : backend.getCollection(type)
     let fnPath = `backend_read${type}`
     let { filter, many } = getRelationFilter.call(this, backend, type, source, info, collection)
     let rootDate = _.get(info, `rootValue["${_temporalExtension}"].date`)

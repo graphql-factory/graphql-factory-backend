@@ -4,28 +4,11 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
-var Events = _interopDefault(require('events'));
 var _ = _interopDefault(require('lodash'));
+var Events = _interopDefault(require('events'));
 var Promise$1 = _interopDefault(require('bluebird'));
-var graphql = require('graphql');
+var docFilter = _interopDefault(require('rethinkdb-doc-filter'));
 var md5 = _interopDefault(require('js-md5'));
-
-var GraphQLFactoryUnsubscribeResponse = {
-  fields: {
-    unsubscribed: {
-      type: 'Boolean',
-      nullable: false
-    }
-  }
-};
-
-var types = {
-  GraphQLFactoryUnsubscribeResponse: GraphQLFactoryUnsubscribeResponse
-};
-
-var FactoryBackendDefinition = {
-  types: types
-};
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) {
   return typeof obj;
@@ -120,6 +103,69 @@ var possibleConstructorReturn = function (self, call) {
   }
 
   return call && (typeof call === "object" || typeof call === "function") ? call : self;
+};
+
+function identity(value) {
+  return value;
+}
+
+function parseLiteral(ast) {
+  var boundParseLiteral = parseLiteral.bind(this);
+  var Kind = this.graphql.Kind;
+
+  switch (ast.kind) {
+    case Kind.STRING:
+    case Kind.BOOLEAN:
+      return ast.value;
+    case Kind.INT:
+    case Kind.FLOAT:
+      return parseFloat(ast.value);
+    case Kind.OBJECT:
+      {
+        var _ret = function () {
+          var value = Object.create(null);
+          ast.fields.forEach(function (field) {
+            value[field.name.value] = boundParseLiteral(field.value);
+          });
+          return {
+            v: value
+          };
+        }();
+
+        if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
+      }
+    case Kind.LIST:
+      return ast.values.map(boundParseLiteral);
+    default:
+      return null;
+  }
+}
+
+var GraphQLFactoryJSON = {
+  type: 'Scalar',
+  name: 'FactoryJSON',
+  description: 'The `JSON` scalar type represents JSON values as specified by ' + '[ECMA-404](http://www.ecma-international.org/ publications/files/ECMA-ST/ECMA-404.pdf).',
+  serialize: identity,
+  parseValue: identity,
+  parseLiteral: parseLiteral
+};
+
+var GraphQLFactoryUnsubscribeResponse = {
+  fields: {
+    unsubscribed: {
+      type: 'Boolean',
+      nullable: false
+    }
+  }
+};
+
+var types = {
+  GraphQLFactoryJSON: GraphQLFactoryJSON,
+  GraphQLFactoryUnsubscribeResponse: GraphQLFactoryUnsubscribeResponse
+};
+
+var FactoryBackendDefinition = {
+  types: types
 };
 
 // constant values - should be centralized at some point
@@ -1001,12 +1047,18 @@ var GraphQLFactoryBackendCompiler = function () {
 
       // if a query, copy a create without its nullables and add an overridable limit
       if (operation === QUERY) {
-        return _.merge({ limit: { type: 'Int' } }, this.queryArgs[rootName]);
+        return _.merge({
+          limit: { type: 'Int' },
+          search: { type: 'GraphQLFactoryJSON' }
+        }, this.queryArgs[rootName]);
       }
 
       // if a subscription, cope a create without its nullables and add a subscriber
       if (operation === SUBSCRIPTION && opName === SUBSCRIBE) {
-        return _.merge({ limit: { type: 'Int' } }, this.queryArgs[rootName], { subscriber: { type: 'String', nullable: false } });
+        return _.merge({
+          limit: { type: 'Int' },
+          search: { type: 'GraphQLFactoryJSON' }
+        }, this.queryArgs[rootName], { subscriber: { type: 'String', nullable: false } });
       }
 
       // check for mutation
@@ -1190,9 +1242,6 @@ var LogMiddleware = function () {
   return LogMiddleware;
 }();
 
-// core modules
-// npm modules
-// local modules
 /**
  * Base GraphQL Factory Backend
  * @extends Events
@@ -1226,7 +1275,7 @@ var GraphQLFactoryBaseBackend = function (_Events) {
    * @param {Object} [config.installData] - Seed data
    * @callback callback
    */
-  function GraphQLFactoryBaseBackend(namespace, graphql$$1, factory, config) {
+  function GraphQLFactoryBaseBackend(namespace, graphql, factory, config) {
     classCallCheck(this, GraphQLFactoryBaseBackend);
 
     var _this = possibleConstructorReturn(this, (GraphQLFactoryBaseBackend.__proto__ || Object.getPrototypeOf(GraphQLFactoryBaseBackend)).call(this));
@@ -1247,15 +1296,15 @@ var GraphQLFactoryBaseBackend = function (_Events) {
 
 
     if (!_.isString(namespace)) throw new Error('a namespace is required');
-    if (!graphql$$1) throw new Error('an instance of graphql is required');
+    if (!graphql) throw new Error('an instance of graphql is required');
     if (!factory) throw new Error('an instance of graphql-factory is required');
     if (!_.isObject(types)) throw new Error('no types were found in the configuration');
 
     // set props
     _this.type = 'GraphQLFactoryBaseBackend';
-    _this.graphql = graphql$$1;
-    _this.GraphQLError = graphql$$1.GraphQLError;
-    _this.factory = factory(graphql$$1);
+    _this.graphql = graphql;
+    _this.GraphQLError = graphql.GraphQLError;
+    _this.factory = factory(graphql);
     _this.name = name || 'GraphQLFactoryBackend';
     _this.options = options || {};
     _this.queries = {};
@@ -2083,6 +2132,15 @@ function existsFilter(backend, type, args) {
   });
 }
 
+/**
+ * creates a filter from a json/mongodb style search
+ * @param backend
+ * @param type
+ * @param search
+ * @param filter
+ */
+
+
 var filter = {
   reqlPath: reqlPath,
   existsFilter: existsFilter,
@@ -2228,7 +2286,7 @@ function read(backend, type) {
         nested = _backend$getTypeInfo.nested;
 
     var temporalMostCurrent = _.get(this, 'globals["' + _temporalExtension + '"].temporalMostCurrent');
-    var collection = backend.getCollection(type);
+    var collection = args.search ? docFilter(r, backend.getCollection(type), args.search) : backend.getCollection(type);
     var fnPath = 'backend_read' + type;
 
     var _getRelationFilter$ca = getRelationFilter.call(this, backend, type, source, info, collection),
@@ -2561,10 +2619,10 @@ function selectionArguments(selections) {
   return args;
 }
 
-function subscriptionArguments(graphql$$1, requestString, idx) {
+function subscriptionArguments(graphql, requestString, idx) {
   var args = [];
-  var Kind$$1 = graphql$$1.Kind;
-  var request = _.isObject(requestString) ? { definitions: [requestString] } : graphql$$1.parse(requestString);
+  var Kind = graphql.Kind;
+  var request = _.isObject(requestString) ? { definitions: [requestString] } : graphql.parse(requestString);
 
   _.forEach(request.definitions, function (definition, idx) {
     var kind = definition.kind,
@@ -2573,7 +2631,7 @@ function subscriptionArguments(graphql$$1, requestString, idx) {
         selectionSet = definition.selectionSet;
 
 
-    if (kind === Kind$$1.OPERATION_DEFINITION && operation === 'subscription') {
+    if (kind === Kind.OPERATION_DEFINITION && operation === 'subscription') {
       args.push({
         name: _.get(name, 'value', '' + idx),
         argument: selectionArguments(selectionSet.selections)
@@ -2688,8 +2746,8 @@ function subscribe(backend, type) {
                 // since there a valid response, subscribe via the manager
                 return backend.subscriptionManager.subscribe(subscriptionId, subscriber, null, filter, {
                   schema: info.schema,
-                  requestString: graphql.print({
-                    kind: graphql.Kind.DOCUMENT,
+                  requestString: backend.graphql.print({
+                    kind: backend.graphql.Kind.DOCUMENT,
                     definitions: [info.operation]
                   }),
                   rootValue: info.rootValue,
@@ -2823,7 +2881,7 @@ var SubscriptionManager = function (_Events) {
     value: function subscribe(subscription, subscriber, parent, filter, query, callback) {
       var _this2 = this;
 
-      var graphql$$1 = this.backend.graphql;
+      var graphql = this.backend.graphql;
 
       // if the subscription is already running, add the subscriber and return
       if (_.has(this.subscriptions, subscription)) {
@@ -2861,7 +2919,7 @@ var SubscriptionManager = function (_Events) {
           _.set(_this2.subscriptions, '["' + subscription + '"].debounce', null);
 
           // do graphql query and emit to backend
-          return graphql$$1.graphql(schema, bypassedRequest, _.cloneDeep(rootValue), _.cloneDeep(context), _.cloneDeep(variableValues)).then(function (result) {
+          return graphql.graphql(schema, bypassedRequest, _.cloneDeep(rootValue), _.cloneDeep(context), _.cloneDeep(variableValues)).then(function (result) {
             return _this2.backend.emit(subscription, result);
           }).catch(function (error) {
             return _this2.backend.emit(subscription, {
@@ -2926,16 +2984,16 @@ var SubscriptionManager = function (_Events) {
   }, {
     key: 'setBypassSubscriber',
     value: function setBypassSubscriber(requestString, bypass) {
-      var graphql$$1 = this.backend.graphql;
-      var Kind$$1 = graphql$$1.Kind;
-      var request = graphql$$1.parse(requestString);
+      var graphql = this.backend.graphql;
+      var Kind = graphql.Kind;
+      var request = graphql.parse(requestString);
 
       _.forEach(request.definitions, function (definition) {
         var kind = definition.kind,
             operation = definition.operation,
             selectionSet = definition.selectionSet;
 
-        if (kind === Kind$$1.OPERATION_DEFINITION && operation === 'subscription' && selectionSet) {
+        if (kind === Kind.OPERATION_DEFINITION && operation === 'subscription' && selectionSet) {
           _.forEach(selectionSet.selections, function (selection) {
             _.forEach(selection.arguments, function (argument) {
               if (_.get(argument, 'name.value') === 'subscriber') {
@@ -2947,7 +3005,7 @@ var SubscriptionManager = function (_Events) {
       });
 
       // return the recompiled request
-      return graphql$$1.print(request);
+      return graphql.print(request);
     }
   }]);
   return SubscriptionManager;
@@ -2983,10 +3041,10 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
    * @param {Object} [connection] - connection for rethinkdb driver
    * @callback callback
    */
-  function GraphQLFactoryRethinkDBBackend(namespace, graphql$$1, factory, r, config, connection) {
+  function GraphQLFactoryRethinkDBBackend(namespace, graphql, factory, r, config, connection) {
     classCallCheck(this, GraphQLFactoryRethinkDBBackend);
 
-    var _this = possibleConstructorReturn(this, (GraphQLFactoryRethinkDBBackend.__proto__ || Object.getPrototypeOf(GraphQLFactoryRethinkDBBackend)).call(this, namespace, graphql$$1, factory, config));
+    var _this = possibleConstructorReturn(this, (GraphQLFactoryRethinkDBBackend.__proto__ || Object.getPrototypeOf(GraphQLFactoryRethinkDBBackend)).call(this, namespace, graphql, factory, config));
 
     _this.type = 'GraphQLFactoryRethinkDBBackend';
 
