@@ -84,6 +84,7 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
    * @private
    */
   _connectDatabase (callback = () => true) {
+    callback = _.isFunction(callback) ? callback : () => true
     return new Promise((resolve, reject) => {
       try {
         let options = _.get(this.options, 'database', {})
@@ -126,6 +127,7 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
    * @return {Promise.<TResult>}
    */
   make (callback) {
+    callback = _.isFunction(callback) ? callback : () => true
     this.logger.info({ stream: 'backend' }, 'making backend')
     return this._connectDatabase()
       .then(() => {
@@ -150,6 +152,7 @@ export default class GraphQLFactoryRethinkDBBackend extends GraphQLFactoryBaseBa
    * Required methods
    *******************************************************************/
   now (callback) {
+    callback = _.isFunction(callback) ? callback : () => true
     return new Promise((resolve, reject) => {
       return this.r.now()
         .run(this._connection)

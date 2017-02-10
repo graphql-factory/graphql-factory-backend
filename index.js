@@ -3133,6 +3133,9 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
         return true;
       };
 
+      callback = _.isFunction(callback) ? callback : function () {
+        return true;
+      };
       return new Promise(function (resolve, reject) {
         try {
           var options = _.get(_this2.options, 'database', {});
@@ -3180,6 +3183,9 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
     value: function make(callback) {
       var _this3 = this;
 
+      callback = _.isFunction(callback) ? callback : function () {
+        return true;
+      };
       this.logger.info({ stream: 'backend' }, 'making backend');
       return this._connectDatabase().then(function () {
         try {
@@ -3207,6 +3213,9 @@ var GraphQLFactoryRethinkDBBackend = function (_GraphQLFactoryBaseBa) {
     value: function now(callback) {
       var _this4 = this;
 
+      callback = _.isFunction(callback) ? callback : function () {
+        return true;
+      };
       return new Promise(function (resolve, reject) {
         return _this4.r.now().run(_this4._connection).then(function (d) {
           callback(null, d);
